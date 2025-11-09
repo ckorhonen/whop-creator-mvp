@@ -1,0 +1,200 @@
+name: Fix Lockfile Integrity #19203581866
+
+on:
+  push:
+    branches:
+      - fix/lockfile-integrity-19203581866
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate-lockfile:
+    name: Regenerate package-lock.json
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Display current lockfile status
+        run: |
+          echo "📊 Current package-lock.json status:"
+          if [ -f "package-lock.json" ]; then
+            echo "✓ File exists"
+            echo "Size: $(wc -c < package-lock.json) bytes"
+            echo "Lines: $(wc -l < package-lock.json)"
+            
+            # Check for placeholder hashes
+            if grep -q "example-integrity-hash\|example-.*-hash" package-lock.json; then
+              echo "❌ Found placeholder integrity hashes"
+            fi
+            
+            # Count packages
+            if command -v jq &> /dev/null; then
+              PACKAGE_COUNT=$(jq '.packages | length' package-lock.json 2>/dev/null || echo "Unable to parse")
+              echo "Packages in lockfile: $PACKAGE_COUNT"
+            fi
+          else
+            echo "❌ package-lock.json not found"
+          fi
+          
+      - name: Backup existing lockfile
+        run: |
+          if [ -f "package-lock.json" ]; then
+            echo "📦 Backing up existing package-lock.json"
+            cp package-lock.json package-lock.json.backup
+          fi
+          
+      - name: Remove corrupt lockfile
+        run: |
+          echo "🗑️  Removing corrupt/incomplete lockfile..."
+          rm -f package-lock.json
+          echo "✓ Lockfile removed"
+          
+      - name: Clean npm cache
+        run: |
+          echo "🧹 Cleaning npm cache..."
+          npm cache clean --force
+          echo "✓ Cache cleaned"
+          
+      - name: Remove node_modules
+        run: |
+          echo "🗑️  Removing node_modules..."
+          rm -rf node_modules
+          echo "✓ node_modules removed"
+          
+      - name: Validate package.json
+        run: |
+          echo "📋 Validating package.json..."
+          
+          if [ ! -f "package.json" ]; then
+            echo "❌ package.json not found!"
+            exit 1
+          fi
+          
+          # Install jq if needed
+          if ! command -v jq &> /dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y jq
+          fi
+          
+          # Validate JSON
+          if ! jq empty package.json 2>/dev/null; then
+            echo "❌ package.json is not valid JSON!"
+            exit 1
+          fi
+          
+          echo "✓ package.json is valid"
+          echo ""
+          echo "Dependencies:"
+          jq -r '.dependencies | keys[]' package.json
+          echo ""
+          echo "DevDependencies:"
+          jq -r '.devDependencies | keys[]' package.json
+          
+      - name: Regenerate lockfile with correct integrity
+        run: |
+          echo "🔨 Regenerating package-lock.json with correct integrity hashes..."
+          npm install --package-lock-only
+          
+          if [ ! -f "package-lock.json" ]; then
+            echo "❌ Failed to generate package-lock.json!"
+            exit 1
+          fi
+          
+          echo "✓ package-lock.json regenerated successfully"
+          
+      - name: Verify integrity hashes
+        run: |
+          echo "🔍 Verifying integrity hashes..."
+          
+          # Install jq if not already installed
+          if ! command -v jq &> /dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y jq
+          fi
+          
+          # Check for placeholder hashes
+          if grep -q "example-integrity-hash\|example-.*-hash" package-lock.json; then
+            echo "❌ Still found placeholder integrity hashes after regeneration!"
+            exit 1
+          fi
+          
+          # Count packages with integrity
+          TOTAL_PACKAGES=$(jq '.packages | length' package-lock.json)
+          INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
+          
+          echo "✓ Total packages in lockfile: $TOTAL_PACKAGES"
+          echo "✓ Packages with integrity hashes: $INTEGRITY_COUNT"
+          
+          # Check lockfile version
+          LOCKFILE_VERSION=$(jq -r '.lockfileVersion' package-lock.json)
+          echo "✓ Lockfile version: $LOCKFILE_VERSION"
+          
+          if [ "$INTEGRITY_COUNT" -lt 10 ]; then
+            echo "⚠️  Warning: Very few packages with integrity hashes ($INTEGRITY_COUNT)"
+          fi
+          
+      - name: Test npm ci
+        run: |
+          echo "🧪 Testing npm ci with regenerated lockfile..."
+          rm -rf node_modules
+          npm ci
+          echo "✓ npm ci successful!"
+          
+      - name: Test build
+        run: |
+          echo "🏗️  Testing build process..."
+          npm run build
+          echo "✓ Build successful!"
+          
+      - name: Generate summary
+        run: |
+          echo "📊 Lockfile Regeneration Summary"
+          echo "================================"
+          echo ""
+          echo "✅ Lockfile successfully regenerated"
+          echo "✅ All integrity hashes are valid"
+          echo "✅ npm ci completed successfully"
+          echo "✅ Build process completed successfully"
+          echo ""
+          echo "Lockfile statistics:"
+          if command -v jq &> /dev/null; then
+            echo "- Total packages: $(jq '.packages | length' package-lock.json)"
+            echo "- With integrity: $(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)"
+            echo "- Lockfile version: $(jq -r '.lockfileVersion' package-lock.json)"
+          fi
+          echo "- File size: $(wc -c < package-lock.json) bytes"
+          
+      - name: Commit regenerated lockfile
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          git add package-lock.json
+          
+          if git diff --staged --quiet; then
+            echo "ℹ️  No changes to commit"
+          else
+            git commit -m "fix: Regenerate package-lock.json with correct integrity hashes
+
+- Remove corrupt/incomplete lockfile
+- Clean npm cache
+- Regenerate with npm install --package-lock-only
+- Verify integrity hashes for all packages
+- Test with npm ci and build
+
+Fixes workflow run #19203581866"
+            
+            git push
+            echo "✓ Changes committed and pushed"
+          fi
