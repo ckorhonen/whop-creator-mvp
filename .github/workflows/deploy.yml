@@ -77,7 +77,7 @@ jobs:
       - name: Type Check
         run: |
           echo "Running TypeScript type check..."
-          npx tsc --noEmit || {
+          npm run typecheck || {
             echo "⚠️  TypeScript errors found, but continuing with build"
             echo "Fix these issues in your next commit"
           }
