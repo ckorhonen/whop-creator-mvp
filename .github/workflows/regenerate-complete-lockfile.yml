@@ -11,6 +11,11 @@ on:
         options:
           - 'true'
           - 'false'
+  # Add push trigger but we'll skip execution unless it's workflow_dispatch
+  # This prevents immediate workflow failure when the workflow file is updated
+  push:
+    paths:
+      - '.github/workflows/regenerate-complete-lockfile.yml'
 
 # Workflow-level permissions - explicit and comprehensive
 # This ensures workflow_dispatch has all necessary permissions
@@ -34,7 +39,22 @@ jobs:
       statuses: write
     
     steps:
+      - name: Check if workflow should run
+        id: should_run
+        run: |
+          # Only run on workflow_dispatch events
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "⏭️  Skipping: This workflow only runs on manual trigger (workflow_dispatch)"
+            echo "   Current trigger: ${{ github.event_name }}"
+            echo "   To run this workflow, use the 'Run workflow' button in the Actions tab"
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Running: Triggered by workflow_dispatch"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          fi
+      
       - name: Debug workflow context
+        if: steps.should_run.outputs.should_run == 'true'
         run: |
           echo "🔍 Workflow Context:"
           echo "  Event: ${{ github.event_name }}"
@@ -48,6 +68,7 @@ jobs:
           echo "✅ Will commit changes after generation"
       
       - name: Checkout repository
+        if: steps.should_run.outputs.should_run == 'true'
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -55,11 +76,13 @@ jobs:
           fetch-depth: 0  # Fetch complete history for proper git operations
       
       - name: Setup Node.js
+        if: steps.should_run.outputs.should_run == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
       
       - name: Check current lockfile status
+        if: steps.should_run.outputs.should_run == 'true'
         run: |
           echo "📊 Current package-lock.json status:"
           if [ -f "package-lock.json" ]; then
@@ -76,22 +99,26 @@ jobs:
           fi
       
       - name: Remove incomplete lockfile
+        if: steps.should_run.outputs.should_run == 'true'
         run: |
           echo "🗑️  Removing incomplete package-lock.json..."
           rm -f package-lock.json
           rm -rf node_modules
       
       - name: Clear npm cache
+        if: steps.should_run.outputs.should_run == 'true'
         run: |
           echo "🧹 Cleaning npm cache..."
           npm cache clean --force
       
       - name: Configure npm for legacy peer deps
+        if: steps.should_run.outputs.should_run == 'true'
         run: |
           echo "⚙️  Configuring npm..."
           echo "legacy-peer-deps=true" > .npmrc
       
       - name: Generate complete lockfile
+        if: steps.should_run.outputs.should_run == 'true'
         run: |
           echo "🔨 Generating complete package-lock.json with all dependencies..."
           npm install --verbose
@@ -100,6 +127,7 @@ jobs:
           echo "✅ Lockfile generation complete!"
       
       - name: Verify generated lockfile
+        if: steps.should_run.outputs.should_run == 'true'
         run: |
           echo "🔍 Verifying generated lockfile..."
           
@@ -133,6 +161,7 @@ jobs:
           echo "✅ Generated $PACKAGES packages with $INTEGRITY_COUNT integrity hashes"
       
       - name: Test installation with npm ci
+        if: steps.should_run.outputs.should_run == 'true'
         run: |
           echo "🧪 Testing npm ci with generated lockfile..."
           rm -rf node_modules
@@ -140,11 +169,13 @@ jobs:
           echo "✅ npm ci successful!"
       
       - name: Configure Git
+        if: steps.should_run.outputs.should_run == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
       
       - name: Commit and push complete lockfile
+        if: steps.should_run.outputs.should_run == 'true'
         run: |
           # Check for changes
           if git diff --quiet package-lock.json .npmrc 2>/dev/null; then
@@ -191,7 +222,7 @@ a complete dependency tree with proper integrity verification."
           fi
       
       - name: Summary
-        if: success()
+        if: steps.should_run.outputs.should_run == 'true' && success()
         run: |
           PACKAGES=$(jq '.packages | length' package-lock.json)
           INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
