@@ -8,10 +8,21 @@ on:
         required: false
         default: 'true'
         type: boolean
+  push:
+    branches:
+      - fix-complete-lockfile-integrity
+    paths:
+      - 'package.json'
+      - '.github/workflows/regenerate-lockfile.yml'
 
 permissions:
   contents: write
   pull-requests: write
+
+# Prevent multiple runs from interfering with each other
+concurrency:
+  group: regenerate-lockfile-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   regenerate:
