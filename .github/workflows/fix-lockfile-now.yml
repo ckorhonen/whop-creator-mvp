@@ -129,6 +129,8 @@ jobs:
           echo ""
           
       - name: Commit and push changes
+        env:
+          REASON: ${{ github.event.inputs.reason || 'Auto-fix on push' }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
@@ -153,7 +155,7 @@ This fixes:
 - ✅ Enables npm ci for faster, reproducible builds
 - ✅ Enables npm caching in CI workflows
 
-Reason: ${{ github.event.inputs.reason || 'Auto-fix on push' }}"
+Reason: $REASON"
 
             git push
             echo "✅ Changes committed and pushed to ${{ github.ref_name }}"
