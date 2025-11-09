@@ -1,0 +1,131 @@
+name: Generate Complete package-lock.json
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Target branch to commit to (leave empty to use current branch)'
+        required: false
+        type: string
+
+jobs:
+  generate-complete-lockfile:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Determine target branch
+        id: branch
+        run: |
+          if [ -n "${{ inputs.target_branch }}" ]; then
+            echo "branch=${{ inputs.target_branch }}" >> $GITHUB_OUTPUT
+            echo "Using input target branch: ${{ inputs.target_branch }}"
+          else
+            echo "branch=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "Using current branch: ${{ github.ref_name }}"
+          fi
+      
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.branch.outputs.branch }}
+          fetch-depth: 1
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Verify package.json exists
+        run: |
+          if [ ! -f package.json ]; then
+            echo "❌ Error: package.json not found in repository"
+            exit 1
+          fi
+          echo "✅ package.json found"
+          echo ""
+          echo "Current dependencies:"
+          cat package.json | grep -A 20 '"dependencies"' || echo "No dependencies found"
+      
+      - name: Remove existing incomplete lockfile
+        run: |
+          if [ -f package-lock.json ]; then
+            echo "Removing existing package-lock.json..."
+            rm package-lock.json
+          fi
+      
+      - name: Generate complete package-lock.json
+        run: |
+          echo "=== Generating Complete package-lock.json ==="
+          echo "This will install all dependencies to create a complete lockfile"
+          echo ""
+          
+          # Clean install to ensure fresh dependency tree
+          npm install
+          
+          echo ""
+          echo "✅ Complete package-lock.json generated"
+          echo ""
+          echo "Lockfile statistics:"
+          wc -l package-lock.json
+          du -h package-lock.json
+          
+          # Verify it's a complete lockfile (should have 100+ lines minimum)
+          LINES=$(wc -l < package-lock.json)
+          if [ "$LINES" -lt 100 ]; then
+            echo "❌ Error: Generated lockfile appears incomplete (only $LINES lines)"
+            echo "A complete lockfile should have at least 100 lines"
+            exit 1
+          fi
+          
+          echo "✅ Lockfile verification passed ($LINES lines)"
+      
+      - name: Clean node_modules
+        run: |
+          echo "Cleaning node_modules to save space..."
+          rm -rf node_modules
+          echo "✅ Cleaned"
+      
+      - name: Commit and Push
+        id: commit
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          
+          git add package-lock.json
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            git commit -m "Add complete package-lock.json for reproducible builds
+
+This lockfile was generated to fix deployment issues:
+- Enables fast npm ci installation
+- Ensures reproducible builds
+- Locks all dependency versions with integrity hashes
+- Improves deployment reliability
+
+Generated with npm install on Node.js 20"
+            git push
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "✅ Changes committed and pushed to ${{ steps.branch.outputs.branch }}"
+          fi
+      
+      - name: Success Summary
+        if: steps.commit.outputs.has_changes == 'true'
+        run: |
+          echo "=== ✅ Complete package-lock.json Generated Successfully ==="
+          echo ""
+          echo "📦 The complete package-lock.json has been added to: ${{ steps.branch.outputs.branch }}"
+          echo ""
+          echo "Next steps:"
+          echo "1. Verify GitHub Secrets are configured:"
+          echo "   - CLOUDFLARE_API_TOKEN"
+          echo "   - CLOUDFLARE_ACCOUNT_ID"
+          echo "2. Ensure Cloudflare Pages project exists: whop-creator-mvp"
+          echo "3. Trigger deployment by pushing to main or manually running workflow"
+          echo ""
+          echo "🚀 Future deployments will now be faster and more reliable!"
