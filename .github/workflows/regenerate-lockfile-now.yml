@@ -1,0 +1,47 @@
+name: Regenerate Complete Lockfile Now
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix-lockfile-complete-regeneration
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix-lockfile-complete-regeneration
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Clean and regenerate lockfile
+        run: |
+          echo "🧹 Cleaning existing files..."
+          rm -rf node_modules package-lock.json
+          npm cache clean --force
+          
+          echo "🔨 Regenerating complete package-lock.json..."
+          npm install
+          
+          echo "🔍 Verifying lockfile..."
+          npm ci
+          
+          echo "✅ Complete package-lock.json generated successfully!"
+          
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "fix: Regenerate complete package-lock.json with all dependencies" || echo "No changes to commit"
+          git push
