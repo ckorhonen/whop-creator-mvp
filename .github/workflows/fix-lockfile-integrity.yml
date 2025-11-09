@@ -1,0 +1,198 @@
+name: Fix Lockfile Integrity
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for integrity fix (optional)'
+        required: false
+        default: 'Fix package-lock.json integrity hashes'
+  push:
+    paths:
+      - 'package.json'
+  pull_request:
+    paths:
+      - 'package-lock.json'
+
+jobs:
+  fix-integrity:
+    name: Fix Package Lockfile Integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install jq
+        run: |
+          echo "📦 Installing jq for JSON processing..."
+          sudo apt-get update -qq
+          sudo apt-get install -y jq
+          echo "✅ jq installed successfully"
+          
+      - name: Check for integrity issues
+        id: check
+        run: |
+          echo "🔍 Checking for integrity issues in package-lock.json..."
+          
+          if [ ! -f "package-lock.json" ]; then
+            echo "⚠️  package-lock.json not found"
+            echo "has_issues=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Check for example/placeholder integrity hashes
+          if grep -q "example-integrity-hash\|example-.*-hash" package-lock.json; then
+            echo "❌ Found placeholder integrity hashes"
+            echo "has_issues=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ No placeholder integrity hashes found"
+            echo "has_issues=false" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Clean npm state
+        if: steps.check.outputs.has_issues == 'true'
+        run: |
+          echo "🧹 Cleaning npm cache and node_modules..."
+          rm -rf node_modules package-lock.json
+          npm cache clean --force
+          
+      - name: Validate package.json
+        if: steps.check.outputs.has_issues == 'true'
+        run: |
+          echo "📋 Validating package.json..."
+          if [ ! -f "package.json" ]; then
+            echo "❌ package.json not found!"
+            exit 1
+          fi
+          
+          # Check if package.json is valid JSON
+          if ! jq empty package.json 2>/dev/null; then
+            echo "❌ package.json is not valid JSON!"
+            exit 1
+          fi
+          
+          echo "✅ package.json is valid"
+          
+      - name: Regenerate lockfile with correct integrity
+        if: steps.check.outputs.has_issues == 'true'
+        run: |
+          echo "🔨 Regenerating package-lock.json with correct integrity hashes..."
+          npm install --package-lock-only
+          
+          if [ ! -f "package-lock.json" ]; then
+            echo "❌ Failed to generate package-lock.json"
+            exit 1
+          fi
+          
+          echo "✅ package-lock.json regenerated successfully"
+          
+      - name: Verify integrity hashes
+        if: steps.check.outputs.has_issues == 'true'
+        run: |
+          echo "🔍 Verifying integrity hashes..."
+          
+          # Check that no placeholder hashes remain
+          if grep -q "example-integrity-hash\|example-.*-hash" package-lock.json; then
+            echo "❌ Still found placeholder integrity hashes after regeneration!"
+            exit 1
+          fi
+          
+          # Count packages with integrity
+          INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
+          echo "✅ Verified $INTEGRITY_COUNT packages with valid integrity hashes"
+          
+      - name: Test installation
+        if: steps.check.outputs.has_issues == 'true'
+        run: |
+          echo "🧪 Testing npm ci with fixed lockfile..."
+          rm -rf node_modules
+          npm ci
+          echo "✅ npm ci successful with fixed lockfile"
+          
+      - name: Generate fix summary
+        if: steps.check.outputs.has_issues == 'true'
+        id: summary
+        run: |
+          echo "📊 Generating fix summary..."
+          
+          PACKAGE_COUNT=$(jq '.packages | length' package-lock.json)
+          INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
+          REASON="${{ github.event.inputs.reason }}"
+          
+          cat > fix-summary.md << EOF
+          # Lockfile Integrity Fix Summary
+          
+          ## Problem Detected
+          - ❌ Package-lock.json contained placeholder integrity hashes
+          - ❌ This prevents proper dependency verification
+          - ❌ Causes security and reproducibility issues
+          
+          ## Changes Made
+          - ✅ Regenerated package-lock.json with valid integrity hashes
+          - 📦 Fixed integrity for ${INTEGRITY_COUNT} out of ${PACKAGE_COUNT} packages
+          - 🔒 Enabled proper dependency verification
+          
+          ## What This Fixes
+          - ✅ Ensures packages are verified against their checksums
+          - ✅ Prevents tampered or corrupted packages
+          - ✅ Enables security scanning and audit tools
+          - ✅ Ensures reproducible builds
+          - ✅ Complies with npm security best practices
+          
+          ## Reason
+          ${REASON}
+          
+          ## Next Steps
+          1. Review the integrity hash changes
+          2. Merge to enable proper dependency verification
+          3. All future installs will verify package integrity
+          
+          ---
+          *Generated automatically by fix-lockfile-integrity workflow*
+          EOF
+          
+      - name: Create Pull Request
+        if: steps.check.outputs.has_issues == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            Fix: Regenerate package-lock.json with correct integrity hashes
+            
+            Fixed placeholder integrity hashes in package-lock.json:
+            - Regenerated lockfile with valid SHA-512 integrity hashes
+            - Enables proper package verification and security scanning
+            - Prevents installation of tampered dependencies
+            - Ensures reproducible and secure builds
+            
+            Reason: ${{ github.event.inputs.reason }}
+          branch: fix-lockfile-integrity-${{ github.run_number }}
+          delete-branch: true
+          title: "🔒 Fix: Regenerate package-lock.json with correct integrity hashes"
+          body-path: fix-summary.md
+          labels: |
+            security
+            dependencies
+            automated
+          assignees: ${{ github.actor }}
+          
+      - name: Workflow completion
+        run: |
+          if [ "${{ steps.check.outputs.has_issues }}" == "true" ]; then
+            echo "🎉 Lockfile integrity fix workflow completed successfully!"
+            echo ""
+            echo "Summary:"
+            cat fix-summary.md
+          else
+            echo "✅ No integrity issues found - lockfile is healthy!"
+          fi
