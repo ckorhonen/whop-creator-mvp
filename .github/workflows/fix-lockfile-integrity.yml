@@ -40,7 +40,6 @@ jobs:
           echo "Job: ${{ github.job }}"
           echo "Runner OS: ${{ runner.os }}"
           echo "Runner Arch: ${{ runner.arch }}"
-          echo "Token available: ${{ github.token != '' }}"
           echo "================================================"
           
       - name: Checkout repository
