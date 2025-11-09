@@ -24,6 +24,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+      
+      - name: Install jq
+        run: |
+          echo "📦 Installing jq for JSON processing..."
+          sudo apt-get update -qq
+          sudo apt-get install -y jq
+          echo "✅ jq installed successfully"
           
       - name: Clean npm state
         run: |
@@ -96,14 +103,15 @@ jobs:
           
           PACKAGE_COUNT=$(jq '.packages | length' package-lock.json)
           LOCKFILE_SIZE=$(wc -c < package-lock.json)
+          REASON="${{ github.event.inputs.reason }}"
           
-          cat > fix-summary.md << 'EOF'
+          cat > fix-summary.md << EOF
           # Lockfile Fix Summary
           
           ## Changes Made
           - ✅ Generated complete package-lock.json
-          - 📦 Locked $PACKAGE_COUNT packages
-          - 📏 Lockfile size: $LOCKFILE_SIZE bytes
+          - 📦 Locked ${PACKAGE_COUNT} packages
+          - 📏 Lockfile size: ${LOCKFILE_SIZE} bytes
           
           ## What This Fixes
           - ✅ Enables npm ci for faster, reproducible builds
@@ -113,7 +121,7 @@ jobs:
           - ✅ Ensures consistent builds across environments
           
           ## Reason
-          ${{ github.event.inputs.reason }}
+          ${REASON}
           
           ## Next Steps
           1. Review the changes in this PR
@@ -123,10 +131,6 @@ jobs:
           ---
           *Generated automatically by fix-lockfile-now workflow*
           EOF
-          
-          # Replace placeholders
-          sed -i "s/\$PACKAGE_COUNT/$PACKAGE_COUNT/g" fix-summary.md
-          sed -i "s/\$LOCKFILE_SIZE/$LOCKFILE_SIZE/g" fix-summary.md
           
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6
