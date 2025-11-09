@@ -1,6 +1,9 @@
 name: Regenerate Complete Lockfile
 
 on:
+  push:
+    branches:
+      - fix-complete-lockfile-integrity
   workflow_dispatch:
     inputs:
       force:
