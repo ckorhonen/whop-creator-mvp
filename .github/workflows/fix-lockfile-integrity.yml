@@ -14,6 +14,9 @@ on:
       - '.github/workflows/fix-lockfile-integrity.yml'
     branches:
       - main
+    branches-ignore:
+      - 'fix/**'
+      - 'fix-*'
 
 # Required permissions for create-pull-request action
 permissions:
