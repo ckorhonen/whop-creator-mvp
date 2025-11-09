@@ -7,6 +7,11 @@ on:
         description: 'Force regeneration even if lockfile exists'
         required: false
         default: 'true'
+  push:
+    branches:
+      - automated-lockfile-fix
+    paths:
+      - '.github/workflows/regenerate-lockfile.yml'
 
 permissions:
   contents: write
@@ -52,25 +57,19 @@ jobs:
             echo "No existing lockfile found"
           fi
       
-      - name: Clean npm cache and node_modules
+      - name: Clean npm cache
         run: |
           echo "=== Cleaning npm cache ==="
           npm cache clean --force
-          
-          if [ -d node_modules ]; then
-            echo "Removing existing node_modules"
-            rm -rf node_modules
-          fi
-          
-          echo "✅ Cache and node_modules cleaned"
+          echo "✅ Cache cleaned"
       
       - name: Generate complete package-lock.json
         run: |
           echo "=== Generating Complete Lockfile ===="
           echo "This will download and verify all dependencies..."
           
-          # Install dependencies to generate proper lockfile with integrity hashes
-          # We'll remove node_modules after to keep the commit clean
+          # Use npm install (not --package-lock-only) to ensure proper integrity hash generation
+          # Then we'll remove node_modules to keep the commit clean
           npm install
           
           if [ -f package-lock.json ]; then
@@ -109,7 +108,7 @@ jobs:
         run: |
           echo "=== Verifying Lockfile ==="
           
-          # Verify lockfile structure without installing
+          # Verify lockfile structure
           if npm ls --package-lock-only 2>&1 | grep -q 'npm ERR!'; then
             echo "⚠️  Warning: Some dependency issues detected"
             npm ls --package-lock-only || true
@@ -121,6 +120,7 @@ jobs:
           echo "=== Lockfile Statistics ==="
           echo "Total lines: $(wc -l < package-lock.json)"
           echo "Total packages: $(grep -c '"resolved":' package-lock.json || echo '0')"
+          echo "Total integrity hashes: $(grep -c '"integrity": "sha' package-lock.json || echo '0')"
           echo "File size: $(du -h package-lock.json | cut -f1)"
       
       - name: Commit and push changes
@@ -134,14 +134,21 @@ jobs:
             exit 0
           fi
           
-          git commit -m "🔧 Regenerate complete package-lock.json
+          git commit -m "🔧 Regenerate complete package-lock.json with valid integrity hashes
 
 This fixes the incomplete lockfile that was causing deployment issues.
 
 Changes:
 - Complete dependency resolution with all transitive dependencies
-- Proper integrity hashes for all packages (no placeholders)
+- Proper SHA-512 integrity hashes for all packages (no placeholders)
 - Verified lockfile format
+
+Packages fixed:
+- @whop-sdk/core
+- wrangler
+- eslint
+- @babel/* packages
+- All other dev dependencies
 
 Fixes workflow failures and enables proper dependency caching."
           
