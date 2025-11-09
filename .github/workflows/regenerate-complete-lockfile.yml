@@ -2,12 +2,18 @@ name: Regenerate Complete Lockfile
 
 on:
   workflow_dispatch:
+    inputs:
+      debug:
+        description: 'Enable debug logging'
+        required: false
+        default: 'false'
   push:
     branches:
       - fix-complete-lockfile
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   regenerate:
@@ -20,11 +26,13 @@ jobs:
         with:
           ref: fix-complete-lockfile
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
           
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
           
       - name: Remove incomplete lockfile if exists
         run: |
