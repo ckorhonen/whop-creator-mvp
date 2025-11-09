@@ -1,0 +1,109 @@
+name: Fix Lockfile Integrity - 19203535866
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/lockfile-integrity-19203535866
+
+jobs:
+  regenerate-lockfile:
+    name: Regenerate Complete Lockfile
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: fix/lockfile-integrity-19203535866
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Remove Corrupt Lockfile
+        run: |
+          echo "Removing corrupt package-lock.json..."
+          rm -f package-lock.json
+          echo "✅ Corrupt lockfile removed"
+      
+      - name: Clean npm Cache
+        run: |
+          echo "Cleaning npm cache..."
+          npm cache clean --force
+          echo "✅ npm cache cleaned"
+      
+      - name: Regenerate Lockfile
+        run: |
+          echo "Regenerating package-lock.json..."
+          npm install
+          echo "✅ Lockfile regenerated successfully"
+      
+      - name: Verify Lockfile Integrity
+        run: |
+          echo "Verifying lockfile integrity..."
+          npm ci
+          echo "✅ Lockfile integrity verified"
+      
+      - name: Run Build Test
+        run: |
+          echo "Testing build..."
+          npm run typecheck
+          npm run build
+          echo "✅ Build successful"
+      
+      - name: Display Lockfile Stats
+        run: |
+          echo "📊 Lockfile Statistics:"
+          echo "File size: $(du -h package-lock.json | cut -f1)"
+          echo "Number of packages: $(grep -c '"version":' package-lock.json)"
+          echo "Lockfile version: $(grep '"lockfileVersion":' package-lock.json)"
+      
+      - name: Commit Updated Lockfile
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          if [[ -n $(git status --porcelain) ]]; then
+            git add package-lock.json
+            git commit -m "Regenerate complete package-lock.json with proper integrity
+
+            - Removed corrupt/incomplete lockfile
+            - Cleaned npm cache
+            - Generated fresh lockfile with all dependencies
+            - Verified integrity with npm ci
+            - Tested build process
+            
+            Fixes workflow run #19203535866"
+            
+            git push origin fix/lockfile-integrity-19203535866
+            echo "✅ Lockfile committed and pushed"
+          else
+            echo "ℹ️ No changes to commit"
+          fi
+      
+      - name: Create Success Summary
+        if: success()
+        run: |
+          echo "## ✅ Lockfile Regeneration Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The package-lock.json has been successfully regenerated with:" >> $GITHUB_STEP_SUMMARY
+          echo "- Complete dependency tree" >> $GITHUB_STEP_SUMMARY
+          echo "- Valid integrity hashes" >> $GITHUB_STEP_SUMMARY
+          echo "- Verified compatibility" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Review the updated lockfile" >> $GITHUB_STEP_SUMMARY
+          echo "2. Create a pull request to merge into main" >> $GITHUB_STEP_SUMMARY
+          echo "3. Verify CI/CD passes" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Create Failure Report
+        if: failure()
+        run: |
+          echo "## ❌ Lockfile Regeneration Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The lockfile regeneration encountered an error." >> $GITHUB_STEP_SUMMARY
+          echo "Please review the logs above for details." >> $GITHUB_STEP_SUMMARY
