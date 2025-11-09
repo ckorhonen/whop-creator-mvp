@@ -1,0 +1,9 @@
+Trigger lockfile regeneration - $(date)
+
+This file change will trigger the automated lockfile fix workflow.
+The workflow will:
+1. Remove the incomplete package-lock.json
+2. Run `npm install` to generate a complete lockfile with all dependencies
+3. Commit the fixed lockfile back to this branch
+
+Timestamp: 2025-11-09T04:48:06Z
