@@ -206,24 +206,12 @@ EOF
         continue-on-error: true
         with:
           token: ${{ github.token }}
-          commit-message: |
-            fix: Regenerate package-lock.json with correct integrity hashes
-            
-            Fixed placeholder integrity hashes in package-lock.json:
-            - Regenerated lockfile with valid SHA-512 integrity hashes
-            - Enables proper package verification and security scanning
-            - Prevents installation of tampered dependencies
-            - Ensures reproducible and secure builds
-            
-            Reason: ${{ github.event.inputs.reason || 'Fix package-lock.json integrity hashes' }}
+          commit-message: "fix: Regenerate package-lock.json with correct integrity hashes\n\nFixed placeholder integrity hashes in package-lock.json:\n- Regenerated lockfile with valid SHA-512 integrity hashes\n- Enables proper package verification and security scanning\n- Prevents installation of tampered dependencies\n- Ensures reproducible and secure builds\n\nReason: ${{ github.event.inputs.reason || 'Fix package-lock.json integrity hashes' }}"
           branch: fix-lockfile-integrity-${{ github.run_number }}
           delete-branch: true
           title: "🔒 Fix: Regenerate package-lock.json with correct integrity hashes"
           body-path: fix-summary.md
-          labels: |
-            security
-            dependencies
-            automated
+          labels: security,dependencies,automated
           assignees: ${{ github.actor }}
           
       - name: PR Creation Status
