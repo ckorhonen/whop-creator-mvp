@@ -7,9 +7,6 @@ on:
         description: 'Reason for integrity fix (optional)'
         required: false
         default: 'Fix package-lock.json integrity hashes'
-  push:
-    paths:
-      - 'package.json'
 
 # Required permissions for create-pull-request action
 permissions:
@@ -153,36 +150,36 @@ jobs:
           fi
           
           cat > fix-summary.md <<EOF
-# Lockfile Integrity Fix Summary
-
-## Problem Detected
-- ❌ Package-lock.json contained placeholder integrity hashes
-- ❌ This prevents proper dependency verification
-- ❌ Causes security and reproducibility issues
-
-## Changes Made
-- ✅ Regenerated package-lock.json with valid integrity hashes
-- 📦 Fixed integrity for $INTEGRITY_COUNT out of $PACKAGE_COUNT packages
-- 🔒 Enabled proper dependency verification
-
-## What This Fixes
-- ✅ Ensures packages are verified against their checksums
-- ✅ Prevents tampered or corrupted packages
-- ✅ Enables security scanning and audit tools
-- ✅ Ensures reproducible builds
-- ✅ Complies with npm security best practices
-
-## Reason
-$REASON
-
-## Next Steps
-1. Review the integrity hash changes
-2. Merge to enable proper dependency verification
-3. All future installs will verify package integrity
-
----
-*Generated automatically by fix-lockfile-integrity workflow*
-EOF
+          # Lockfile Integrity Fix Summary
+          
+          ## Problem Detected
+          - ❌ Package-lock.json contained placeholder integrity hashes
+          - ❌ This prevents proper dependency verification
+          - ❌ Causes security and reproducibility issues
+          
+          ## Changes Made
+          - ✅ Regenerated package-lock.json with valid integrity hashes
+          - 📦 Fixed integrity for $INTEGRITY_COUNT out of $PACKAGE_COUNT packages
+          - 🔒 Enabled proper dependency verification
+          
+          ## What This Fixes
+          - ✅ Ensures packages are verified against their checksums
+          - ✅ Prevents tampered or corrupted packages
+          - ✅ Enables security scanning and audit tools
+          - ✅ Ensures reproducible builds
+          - ✅ Complies with npm security best practices
+          
+          ## Reason
+          $REASON
+          
+          ## Next Steps
+          1. Review the integrity hash changes
+          2. Merge to enable proper dependency verification
+          3. All future installs will verify package integrity
+          
+          ---
+          *Generated automatically by fix-lockfile-integrity workflow*
+          EOF
           
       - name: Create Pull Request
         if: steps.check.outputs.has_issues == 'true'
