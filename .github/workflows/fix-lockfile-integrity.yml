@@ -8,6 +8,10 @@ on:
         required: false
         default: 'Fix package-lock.json integrity hashes'
   push:
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/fix-lockfile-integrity.yml'
     branches:
       - 'main'
       - 'fix/**'
@@ -16,6 +20,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: read
 
 jobs:
   fix-integrity:
@@ -23,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     
-    # Explicit permissions at job level (ensures they apply)
+    # Explicit permissions at job level (redundant but ensures they apply)
     permissions:
       contents: write
       pull-requests: write
@@ -147,12 +152,8 @@ jobs:
           
           PACKAGE_COUNT=$(jq '.packages | length' package-lock.json)
           INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
-          REASON="${{ github.event.inputs.reason }}"
-          if [ -z "$REASON" ]; then
-            REASON="Fix package-lock.json integrity hashes"
-          fi
           
-          cat > fix-summary.md <<EOF
+          cat > fix-summary.md <<'EOF'
 # Lockfile Integrity Fix Summary
 
 ## Problem Detected
@@ -162,7 +163,7 @@ jobs:
 
 ## Changes Made
 - ✅ Regenerated package-lock.json with valid integrity hashes
-- 📦 Fixed integrity for $INTEGRITY_COUNT out of $PACKAGE_COUNT packages
+- 📦 Fixed integrity for packages in the lockfile
 - 🔒 Enabled proper dependency verification
 
 ## What This Fixes
@@ -171,9 +172,6 @@ jobs:
 - ✅ Enables security scanning and audit tools
 - ✅ Ensures reproducible builds
 - ✅ Complies with npm security best practices
-
-## Reason
-$REASON
 
 ## Next Steps
 1. Review the integrity hash changes
@@ -189,24 +187,12 @@ EOF
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: |
-            fix: Regenerate package-lock.json with correct integrity hashes
-            
-            Fixed placeholder integrity hashes in package-lock.json:
-            - Regenerated lockfile with valid SHA-512 integrity hashes
-            - Enables proper package verification and security scanning
-            - Prevents installation of tampered dependencies
-            - Ensures reproducible and secure builds
-            
-            Reason: ${{ github.event.inputs.reason || 'Fix package-lock.json integrity hashes' }}
+          commit-message: "fix: Regenerate package-lock.json with correct integrity hashes"
           branch: fix-lockfile-integrity-${{ github.run_number }}
           delete-branch: true
           title: "🔒 Fix: Regenerate package-lock.json with correct integrity hashes"
           body-path: fix-summary.md
-          labels: |
-            security
-            dependencies
-            automated
+          labels: security,dependencies,automated
           assignees: ${{ github.actor }}
           
       - name: Workflow completion
