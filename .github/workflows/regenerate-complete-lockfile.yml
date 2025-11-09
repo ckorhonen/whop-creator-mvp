@@ -100,12 +100,12 @@ jobs:
             echo "ℹ️  No changes to lockfile"
           else
             git add package-lock.json
-            git commit -m "Generate complete package-lock.json with all dependencies
-
-- Generated complete lockfile with all transitive dependencies
-- Includes valid SHA-512 integrity hashes for all packages
-- Verified installation with npm ci
-- Fixes incomplete dependency tracking"
+            git commit -m "Generate complete package-lock.json with all dependencies" \
+              -m "" \
+              -m "- Generated complete lockfile with all transitive dependencies" \
+              -m "- Includes valid SHA-512 integrity hashes for all packages" \
+              -m "- Verified installation with npm ci" \
+              -m "- Fixes incomplete dependency tracking"
             git push
             echo "✅ Complete lockfile committed and pushed"
           fi
