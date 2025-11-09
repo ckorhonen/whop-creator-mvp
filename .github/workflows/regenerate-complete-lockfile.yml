@@ -138,15 +138,7 @@ jobs:
           fi
           
           git add package-lock.json .npmrc
-          git commit -m "🔒 Regenerate complete package-lock.json with all dependencies" \
-            -m "" \
-            -m "- Generated complete lockfile with 500+ packages" \
-            -m "- Includes all transitive dependencies" \
-            -m "- All packages have valid SHA-512 integrity hashes" \
-            -m "- Fixes incomplete lockfile causing workflow failures" \
-            -m "" \
-            -m "This fixes the auto-fix-lockfile workflow failures by providing" \
-            -m "a complete dependency tree with proper integrity verification."
+          git commit -m "🔒 Regenerate complete package-lock.json with all dependencies" -m "" -m "- Generated complete lockfile with 500+ packages" -m "- Includes all transitive dependencies" -m "- All packages have valid SHA-512 integrity hashes" -m "- Fixes incomplete lockfile causing workflow failures" -m "" -m "This fixes the auto-fix-lockfile workflow failures by providing" -m "a complete dependency tree with proper integrity verification."
           
           git push
           
