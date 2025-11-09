@@ -24,13 +24,14 @@ jobs:
   regenerate-lockfile:
     name: Generate Complete package-lock.json
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.branch || github.ref }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -38,6 +39,7 @@ jobs:
           node-version: '20'
       
       - name: Check current lockfile status
+        id: check_status
         run: |
           echo "📊 Current package-lock.json status:"
           if [ -f "package-lock.json" ]; then
@@ -45,12 +47,14 @@ jobs:
             PACKAGES=$(jq '.packages | length' package-lock.json || echo "0")
             echo "  Lines: $LINES"
             echo "  Packages: $PACKAGES"
+            echo "packages=$PACKAGES" >> $GITHUB_OUTPUT
             
             if [ "$PACKAGES" -lt 100 ]; then
               echo "⚠️  INCOMPLETE: Only $PACKAGES packages (expected 500+)"
             fi
           else
             echo "❌ package-lock.json not found"
+            echo "packages=0" >> $GITHUB_OUTPUT
           fi
       
       - name: Remove incomplete lockfile
@@ -78,6 +82,7 @@ jobs:
           echo "✅ Lockfile generation complete!"
       
       - name: Verify generated lockfile
+        id: verify
         run: |
           echo "🔍 Verifying generated lockfile..."
           
@@ -94,6 +99,10 @@ jobs:
           echo "  Lines: $LINES"
           echo "  Total packages: $PACKAGES"
           echo "  With integrity: $INTEGRITY_COUNT"
+          
+          echo "lines=$LINES" >> $GITHUB_OUTPUT
+          echo "packages=$PACKAGES" >> $GITHUB_OUTPUT
+          echo "integrity=$INTEGRITY_COUNT" >> $GITHUB_OUTPUT
           
           # Verify it's complete (should have hundreds of packages, not dozens)
           if [ "$PACKAGES" -lt 100 ]; then
@@ -117,42 +126,79 @@ jobs:
           npm ci
           echo "✅ npm ci successful!"
       
-      - name: Commit and push complete lockfile
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          if git diff --quiet package-lock.json; then
-            echo "ℹ️  No changes to package-lock.json"
-            exit 0
-          fi
-          
-          git add package-lock.json .npmrc
-          git commit -m "🔒 Regenerate complete package-lock.json with all dependencies
-
-- Generated complete lockfile with 500+ packages
-- Includes all transitive dependencies
-- All packages have valid SHA-512 integrity hashes
-- Fixes incomplete lockfile causing workflow failures
-
-This fixes the auto-fix-lockfile workflow failures by providing
-a complete dependency tree with proper integrity verification."
-          
-          git push
-          
-          echo "✅ Complete lockfile committed and pushed!"
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            🔒 Regenerate complete package-lock.json with all dependencies
+            
+            - Generated complete lockfile with ${{ steps.verify.outputs.packages }} packages
+            - Includes all transitive dependencies
+            - All packages have valid SHA-512 integrity hashes
+            - Fixes incomplete lockfile causing workflow failures
+            
+            This fixes the auto-fix-lockfile workflow failures by providing
+            a complete dependency tree with proper integrity verification.
+          title: '🔒 Regenerate Complete package-lock.json'
+          body: |
+            ## 🔒 Regenerate Complete package-lock.json
+            
+            This PR regenerates the complete `package-lock.json` file with all dependencies properly resolved.
+            
+            ### 📊 Lockfile Statistics
+            - **Lines**: ${{ steps.verify.outputs.lines }}
+            - **Total packages**: ${{ steps.verify.outputs.packages }}
+            - **With integrity hashes**: ${{ steps.verify.outputs.integrity }}
+            - **Previous packages**: ${{ steps.check_status.outputs.packages }}
+            
+            ### ✨ What This Fixes
+            - ✅ Complete dependency tree with all transitive dependencies
+            - ✅ Valid SHA-512 integrity hashes for all packages
+            - ✅ Proper resolution of peer dependencies
+            - ✅ Fixes workflow failures caused by incomplete lockfile
+            
+            ### 🔍 Verification
+            - [x] Lockfile generated successfully
+            - [x] All packages have integrity hashes
+            - [x] No placeholder hashes found
+            - [x] `npm ci` test passed
+            
+            ### 🚀 Next Steps
+            After merging:
+            1. All workflow runs will use the complete lockfile
+            2. `npm ci` will work correctly
+            3. Builds will be reproducible across all environments
+            
+            ---
+            **Generated**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+            **Workflow Run**: ${{ github.run_id }}
+            **Triggered by**: ${{ github.actor }}
+          branch: regenerate-lockfile-${{ github.run_id }}
+          delete-branch: true
+          labels: |
+            dependencies
+            automation
+            lockfile
+          assignees: ${{ github.actor }}
       
       - name: Summary
+        if: always()
         run: |
-          PACKAGES=$(jq '.packages | length' package-lock.json)
-          INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
-          
           echo "🎉 Lockfile Regeneration Complete!"
           echo ""
-          echo "📊 Final Stats:"
-          echo "  Total packages: $PACKAGES"
-          echo "  With integrity: $INTEGRITY_COUNT"
-          echo ""
-          echo "✅ The complete package-lock.json has been committed to this branch"
-          echo "✅ All future workflow runs will have proper dependencies"
-          echo "✅ npm ci will work correctly with the complete lockfile"
+          
+          if [ -f "package-lock.json" ]; then
+            PACKAGES=$(jq '.packages | length' package-lock.json)
+            INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
+            
+            echo "📊 Final Stats:"
+            echo "  Total packages: $PACKAGES"
+            echo "  With integrity: $INTEGRITY_COUNT"
+            echo ""
+            echo "✅ A pull request has been created with the complete lockfile"
+            echo "✅ Review and merge to apply the changes"
+          else
+            echo "❌ Lockfile generation failed"
+            echo "Check the logs above for details"
+          fi
