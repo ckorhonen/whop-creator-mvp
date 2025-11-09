@@ -22,11 +22,6 @@ jobs:
     name: Regenerate and Commit Lockfile
     runs-on: ubuntu-latest
     
-    # Job permissions
-    permissions:
-      contents: write
-      pull-requests: write
-    
     steps:
       - name: Debug workflow context
         if: inputs.debug == 'true'
