@@ -15,6 +15,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: read
 
 jobs:
   fix-integrity:
@@ -22,11 +23,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     
+    # Explicit permissions at job level (redundant but ensures they apply)
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+    
     steps:
+      - name: Debug - Check permissions
+        run: |
+          echo "🔍 Checking workflow permissions..."
+          echo "Repository: ${{ github.repository }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+          
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -167,7 +183,7 @@ jobs:
           
       - name: Create Pull Request
         if: steps.check.outputs.has_issues == 'true'
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: |
