@@ -149,7 +149,7 @@ jobs:
           INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
           REASON="${{ github.event.inputs.reason || 'Fix package-lock.json integrity hashes' }}"
           
-          cat > fix-summary.md << 'ENDOFSUMMARY'
+          cat > fix-summary.md << 'EOF'
           # Lockfile Integrity Fix Summary
           
           ## Problem Detected
@@ -179,7 +179,7 @@ jobs:
           
           ---
           *Generated automatically by fix-lockfile-integrity workflow*
-          ENDOFSUMMARY
+EOF
           
           # Replace placeholders with actual values
           sed -i "s/PACKAGE_COUNT_PLACEHOLDER/${PACKAGE_COUNT}/g" fix-summary.md
