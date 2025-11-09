@@ -11,6 +11,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 jobs:
   regenerate:
@@ -141,13 +142,18 @@ jobs:
           echo "=== Committing Changes ===="
           
           # Check if there are changes
-          if ! git diff --quiet package-lock.json 2>/dev/null; then
-            git add package-lock.json
-            
-            PLACEHOLDER_COUNT="${placeholder_count:-0}"
-            RESOLVED_COUNT=$(grep -c '\"resolved\":' package-lock.json 2>/dev/null || echo '0')
-            
-            git commit -m "🔧 Regenerate package-lock.json with real integrity hashes
+          if git diff --quiet package-lock.json 2>/dev/null && git diff --cached --quiet package-lock.json 2>/dev/null; then
+            echo "ℹ️  No changes detected in lockfile"
+            exit 0
+          fi
+          
+          git add package-lock.json
+          
+          PLACEHOLDER_COUNT="${{ steps.analyze.outputs.placeholder_count }}"
+          PLACEHOLDER_COUNT="${PLACEHOLDER_COUNT:-0}"
+          RESOLVED_COUNT=$(grep -c '\"resolved\":' package-lock.json 2>/dev/null || echo '0')
+          
+          git commit -m "🔧 Regenerate package-lock.json with real integrity hashes
 
 Fixed placeholder/example integrity hashes with real SHA-512 hashes.
 
@@ -159,14 +165,21 @@ Changes:
 - Total packages: $RESOLVED_COUNT
 
 This enables proper dependency verification and caching in CI/CD."
-            
-            echo ""
-            echo "=== Pushing to GitHub ===="
-            git push
-            
+          
+          echo ""
+          echo "=== Pushing to GitHub ===="
+          
+          # Attempt to push with better error handling
+          if git push; then
             echo "✅ Successfully pushed changes!"
           else
-            echo "ℹ️  No changes detected in lockfile"
+            echo "❌ ERROR: Failed to push changes"
+            echo "Checking git status:"
+            git status
+            echo ""
+            echo "Checking remote:"
+            git remote -v
+            exit 1
           fi
       
       - name: Summary
@@ -187,6 +200,8 @@ This enables proper dependency verification and caching in CI/CD."
               echo "Result: ✅ SUCCESS - Lockfile is now valid"
             else
               echo "Result: ❌ FAILED - Lockfile still has issues"
+              echo "Placeholders: $PLACEHOLDERS"
+              echo "Real hashes: $REAL_HASHES"
             fi
           else
             echo "Result: ❌ FAILED - No lockfile found"
