@@ -10,12 +10,12 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     name: Deploy
-    timeout-minutes: 20  # Increased from 15 for more buffer
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1  # Shallow clone for faster checkout
+          fetch-depth: 1
         timeout-minutes: 2
       
       - name: Debug - Show environment
@@ -34,11 +34,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # Note: cache is disabled because there's no package-lock.json
-          # To enable caching, generate a complete lockfile with 'npm install'
-          # and commit it, then uncomment the line below:
-          # cache: 'npm'
-        timeout-minutes: 3
+          cache: 'npm'
+        timeout-minutes: 2
       
       - name: Validate Environment
         run: |
@@ -54,8 +51,13 @@ jobs:
             exit 1
           fi
           echo "✅ package.json found"
-          echo "Package.json contents:"
-          cat package.json
+          if [ -f package-lock.json ]; then
+            echo "✅ package-lock.json found"
+            LOCKFILE_SIZE=$(wc -l < package-lock.json)
+            echo "   Lockfile size: $LOCKFILE_SIZE lines"
+          else
+            echo "⚠️  Warning: package-lock.json not found"
+          fi
           echo "=============================="
           
       - name: Check GitHub Secrets
@@ -96,90 +98,30 @@ jobs:
         run: |
           echo "=== Installing Dependencies ==="
           
-          # Check if package-lock.json exists and is complete
-          USE_NPM_CI=false
           if [ -f package-lock.json ]; then
-            # Check if the lockfile has actual package data (more than just metadata)
-            # Complete lockfiles have hundreds of lines; incomplete ones have < 30
             LOCKFILE_SIZE=$(wc -l < package-lock.json)
-            if [ "$LOCKFILE_SIZE" -gt 30 ]; then
+            if [ "$LOCKFILE_SIZE" -gt 100 ]; then
               echo "✅ Found complete package-lock.json ($LOCKFILE_SIZE lines)"
               echo "Using npm ci for fast, reproducible installation"
-              USE_NPM_CI=true
+              npm ci
+              echo "✅ Dependencies installed successfully with npm ci"
             else
-              echo "⚠️  Warning: package-lock.json exists but appears incomplete ($LOCKFILE_SIZE lines)"
-              echo "An incomplete lockfile will cause npm ci to fail"
+              echo "⚠️  Warning: package-lock.json appears incomplete ($LOCKFILE_SIZE lines)"
               echo "Using npm install instead"
+              npm install
+              echo "✅ Dependencies installed successfully with npm install"
             fi
           else
             echo "⚠️  Warning: package-lock.json not found"
             echo "Using npm install (slower and less reproducible)"
+            npm install
+            echo "✅ Dependencies installed successfully with npm install"
           fi
-          
-          # Function to try npm install with retries
-          install_dependencies() {
-            local max_retries=2
-            local retry_count=0
-            
-            while [ $retry_count -le $max_retries ]; do
-              if [ $retry_count -gt 0 ]; then
-                echo ""
-                echo "⚠️  Retry attempt $retry_count of $max_retries"
-                echo "Cleaning npm cache..."
-                npm cache clean --force
-                sleep 5
-              fi
-              
-              echo "Installing dependencies (attempt $((retry_count + 1)))..."
-              
-              if [ "$USE_NPM_CI" = true ]; then
-                if npm ci --loglevel=error; then
-                  echo "✅ Dependencies installed successfully with npm ci"
-                  return 0
-                fi
-              else
-                if npm install --loglevel=error; then
-                  echo "✅ Dependencies installed successfully with npm install"
-                  return 0
-                fi
-              fi
-              
-              retry_count=$((retry_count + 1))
-              
-              if [ $retry_count -le $max_retries ]; then
-                echo "❌ Installation failed, will retry..."
-              fi
-            done
-            
-            echo ""
-            echo "❌ Failed to install dependencies after $((max_retries + 1)) attempts"
-            echo ""
-            echo "🔍 Troubleshooting information:"
-            echo "- npm version: $(npm --version)"
-            echo "- Node version: $(node --version)"
-            echo "- Network connectivity to npm registry:"
-            curl -I https://registry.npmjs.org/ || echo "Cannot reach npm registry"
-            echo ""
-            echo "💡 Possible solutions:"
-            echo "1. Try re-running the workflow (may be a transient npm registry issue)"
-            echo "2. Generate a package-lock.json file locally and commit it"
-            echo "3. Check if any packages in package.json are unavailable"
-            return 1
-          }
-          
-          # Run the installation
-          if ! install_dependencies; then
-            exit 1
-          fi
-          
-          echo ""
-          echo "💡 To speed up future builds:"
-          echo "   Run 'npm install' locally and commit the complete package-lock.json"
           echo "=============================="
-        timeout-minutes: 10  # Increased from 5 to handle slow npm install without lockfile
+        timeout-minutes: 5
       
       - name: Type Check
-        continue-on-error: true  # Don't fail workflow on type errors
+        continue-on-error: true
         run: |
           echo "=== Running Type Check ==="
           npm run typecheck || {
@@ -189,13 +131,12 @@ jobs:
           }
           echo "✅ Type check passed"
           echo "=============================="
-        timeout-minutes: 3
+        timeout-minutes: 2
       
       - name: Build
         run: |
           echo "=== Building Project ==="
           
-          # Pre-build validation
           echo "Validating build configuration..."
           if [ ! -f vite.config.ts ]; then
             echo "⚠️  Warning: vite.config.ts not found"
@@ -222,7 +163,7 @@ jobs:
             exit 1
           fi
           echo "=============================="
-        timeout-minutes: 8  # Increased from 5 for complex builds
+        timeout-minutes: 5
       
       - name: Verify Build Output
         run: |
