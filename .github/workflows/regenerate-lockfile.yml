@@ -27,7 +27,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          # Note: cache disabled because we're regenerating the lockfile
+          # cache: 'npm' would fail if lockfile is missing or invalid
       
       - name: Configure Git
         run: |
@@ -126,6 +127,9 @@ jobs:
           if ! git diff --quiet package-lock.json; then
             git add package-lock.json
             
+            PLACEHOLDER_COUNT="${{ steps.analyze.outputs.placeholder_count }}"
+            RESOLVED_COUNT=$(grep -c '"resolved":' package-lock.json || echo '0')
+            
             git commit -m "🔧 Regenerate package-lock.json with real integrity hashes
 
 Fixed placeholder/example integrity hashes with real SHA-512 hashes.
@@ -134,7 +138,7 @@ Changes:
 - Removed lockfile with placeholder hashes (${PLACEHOLDER_COUNT:-0} found)
 - Regenerated using npm install --package-lock-only
 - Verified all packages now have proper integrity hashes
-- Total packages: $(grep -c '\"resolved\":' package-lock.json || echo '0')
+- Total packages: $RESOLVED_COUNT
 
 This enables proper dependency verification and caching in CI/CD."
             
