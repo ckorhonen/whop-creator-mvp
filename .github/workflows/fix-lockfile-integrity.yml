@@ -190,16 +190,19 @@ EOF
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: |
+          commit-message: >-
             fix: Regenerate package-lock.json with correct integrity hashes
             
-            Fixed placeholder integrity hashes in package-lock.json:
-            - Regenerated lockfile with valid SHA-512 integrity hashes
-            - Enables proper package verification and security scanning
-            - Prevents installation of tampered dependencies
-            - Ensures reproducible and secure builds
             
-            Reason: ${{ github.event.inputs.reason || 'Fix package-lock.json integrity hashes' }}
+            Fixed placeholder integrity hashes in package-lock.json:
+            
+            - Regenerated lockfile with valid SHA-512 integrity hashes
+            
+            - Enables proper package verification and security scanning
+            
+            - Prevents installation of tampered dependencies
+            
+            - Ensures reproducible and secure builds
           branch: fix-lockfile-integrity-${{ github.run_number }}
           delete-branch: true
           title: "🔒 Fix: Regenerate package-lock.json with correct integrity hashes"
