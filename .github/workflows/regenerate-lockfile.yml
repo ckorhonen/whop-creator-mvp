@@ -48,8 +48,8 @@ jobs:
             exit 0
           fi
           
-          # Check for placeholder hashes
-          PLACEHOLDER_COUNT=$(grep -c "example-.*-hash" package-lock.json 2>/dev/null || echo "0")
+          # Check for placeholder hashes - look for "example" in integrity field
+          PLACEHOLDER_COUNT=$(grep -o '"integrity": "sha[0-9]*-example-[^"]*"' package-lock.json 2>/dev/null | wc -l || echo "0")
           
           if [ "$PLACEHOLDER_COUNT" -gt "0" ]; then
             echo "status=invalid" >> $GITHUB_OUTPUT
@@ -58,7 +58,7 @@ jobs:
             
             echo ""
             echo "Examples of placeholder hashes found:"
-            grep "example-.*-hash" package-lock.json | head -5
+            grep -o '"integrity": "sha[0-9]*-example-[^"]*"' package-lock.json | head -5
           else
             echo "status=valid" >> $GITHUB_OUTPUT
             echo "✅ Lockfile appears valid (no placeholders)"
@@ -110,18 +110,21 @@ jobs:
         run: |
           echo "=== Verifying New Lockfile ===="
           
-          # Check for remaining placeholders
-          REMAINING=$(grep -c "example-.*-hash" package-lock.json 2>/dev/null || echo "0")
+          # Check for remaining placeholder hashes containing "example"
+          REMAINING=$(grep -o '"integrity": "sha[0-9]*-example-[^"]*"' package-lock.json 2>/dev/null | wc -l || echo "0")
           
           if [ "$REMAINING" -gt "0" ]; then
             echo "❌ ERROR: Generated lockfile still has $REMAINING placeholders!"
             echo "This indicates a serious issue with npm or the registry."
-            grep -n "example-.*-hash" package-lock.json | head -10
+            echo ""
+            echo "Placeholder hashes found:"
+            grep -n '"integrity": "sha[0-9]*-example-[^"]*"' package-lock.json | head -10
             exit 1
           fi
           
-          # Count real integrity hashes - use double quotes with proper escaping
-          REAL_HASHES=$(grep -c "\"integrity\": \"sha" package-lock.json 2>/dev/null || echo "0")
+          # Count real integrity hashes (should have base64-like characters after sha512-)
+          # Real hashes look like: "integrity": "sha512-1SDgH6ZSPTl..."
+          REAL_HASHES=$(grep -c '"integrity": "sha[0-9]\+-[A-Za-z0-9+/=]\+"' package-lock.json 2>/dev/null || echo "0")
           
           if [ "$REAL_HASHES" -eq "0" ]; then
             echo "❌ ERROR: No integrity hashes found in lockfile"
@@ -133,7 +136,7 @@ jobs:
           echo "=== Lockfile Statistics ===="
           echo "📊 Total lines: $(wc -l < package-lock.json)"
           echo "📦 Packages with integrity: $REAL_HASHES"
-          echo "📦 Packages with resolved: $(grep -c "\"resolved\":" package-lock.json 2>/dev/null || echo '0')"
+          echo "📦 Packages with resolved: $(grep -c '"resolved":' package-lock.json 2>/dev/null || echo '0')"
           echo "💾 File size: $(du -h package-lock.json | cut -f1)"
       
       - name: Commit and push changes
@@ -151,7 +154,7 @@ jobs:
           
           PLACEHOLDER_COUNT="${{ steps.analyze.outputs.placeholder_count }}"
           PLACEHOLDER_COUNT="${PLACEHOLDER_COUNT:-0}"
-          RESOLVED_COUNT=$(grep -c "\"resolved\":" package-lock.json 2>/dev/null || echo '0')
+          RESOLVED_COUNT=$(grep -c '"resolved":' package-lock.json 2>/dev/null || echo '0')
           
           git commit -m "🔧 Regenerate package-lock.json with real integrity hashes
 
@@ -202,12 +205,14 @@ This enables proper dependency verification and caching in CI/CD."
           echo "Status: ${{ steps.analyze.outputs.status }}"
           
           if [ -f package-lock.json ]; then
-            # Use double quotes with proper escaping for JSON pattern matching
-            REAL_HASHES=$(grep -c "\"integrity\": \"sha" package-lock.json 2>/dev/null || echo "0")
-            PLACEHOLDERS=$(grep -c "example-.*-hash" package-lock.json 2>/dev/null || echo "0")
+            # Check for placeholder hashes containing "example"
+            PLACEHOLDERS=$(grep -o '"integrity": "sha[0-9]*-example-[^"]*"' package-lock.json 2>/dev/null | wc -l || echo "0")
+            # Count real hashes
+            REAL_HASHES=$(grep -c '"integrity": "sha[0-9]\+-[A-Za-z0-9+/=]\+"' package-lock.json 2>/dev/null || echo "0")
             
             if [ "$PLACEHOLDERS" -eq "0" ] && [ "$REAL_HASHES" -gt "0" ]; then
               echo "Result: ✅ SUCCESS - Lockfile is now valid"
+              echo "Real hashes: $REAL_HASHES"
             else
               echo "Result: ❌ FAILED - Lockfile still has issues"
               echo "Placeholders: $PLACEHOLDERS"
