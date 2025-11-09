@@ -25,6 +25,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     
+    # Prevent circular triggers - skip if triggered by automated bot commits
+    if: github.actor != 'github-actions[bot]' && github.actor != 'create-pull-request[bot]'
+    
     # Explicit permissions at job level (redundant but ensures they apply)
     permissions:
       contents: write
