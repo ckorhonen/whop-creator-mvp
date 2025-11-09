@@ -167,16 +167,16 @@ jobs:
           BRANCH_NAME: ${{ github.ref_name }}
           REPO_NAME: ${{ github.repository }}
         run: |
-          # Create commit
-          git commit -m "🔒 Regenerate complete package-lock.json with all dependencies
-
-- Generated complete lockfile with 500+ packages
-- Includes all transitive dependencies
-- All packages have valid SHA-512 integrity hashes
-- Fixes incomplete lockfile causing workflow failures
-
-This fixes the auto-fix-lockfile workflow failures by providing
-a complete dependency tree with proper integrity verification."
+          # Create commit with properly formatted multi-line message
+          git commit -m "🔒 Regenerate complete package-lock.json with all dependencies" \
+                     -m "" \
+                     -m "- Generated complete lockfile with 500+ packages" \
+                     -m "- Includes all transitive dependencies" \
+                     -m "- All packages have valid SHA-512 integrity hashes" \
+                     -m "- Fixes incomplete lockfile causing workflow failures" \
+                     -m "" \
+                     -m "This fixes the auto-fix-lockfile workflow failures by providing" \
+                     -m "a complete dependency tree with proper integrity verification."
           
           # Set up authentication
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO_NAME}.git"
