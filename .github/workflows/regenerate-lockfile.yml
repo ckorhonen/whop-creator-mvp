@@ -9,7 +9,7 @@ on:
       force:
         description: 'Force regeneration even if lockfile exists'
         required: false
-        default: 'true'
+        default: true
         type: boolean
 
 permissions:
