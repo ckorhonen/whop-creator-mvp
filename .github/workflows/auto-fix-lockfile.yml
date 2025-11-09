@@ -21,21 +21,28 @@ jobs:
         with:
           node-version: '20'
           
-      - name: Remove incomplete lockfile
+      - name: Remove all existing artifacts
         run: |
-          echo "🧹 Removing incomplete lockfile..."
+          echo "🧹 Removing all existing build artifacts..."
           rm -rf package-lock.json node_modules
+          echo "✅ Cleanup complete"
           
-      - name: Clean npm cache
+      - name: Clean all caches
         run: |
-          echo "🧹 Cleaning npm cache..."
+          echo "🧹 Cleaning all caches..."
           npm cache clean --force
+          # Also clear any yarn cache if it exists
+          if command -v yarn &> /dev/null; then
+            yarn cache clean
+          fi
+          echo "✅ Cache cleaned"
           
-      - name: Generate complete lockfile
+      - name: Generate complete lockfile with force
         run: |
           echo "📦 Generating complete package-lock.json..."
-          npm install --loglevel=verbose
-          echo "✅ Complete lockfile generated"
+          # Use --force to ensure npm rebuilds everything from scratch
+          npm install --force --loglevel=verbose
+          echo "✅ Lockfile generated"
           
       - name: Verify lockfile completeness
         run: |
@@ -45,10 +52,21 @@ jobs:
           fi
           
           LINES=$(wc -l < package-lock.json)
-          echo "📊 Lockfile has $LINES lines"
+          SIZE=$(du -h package-lock.json | cut -f1)
+          echo "📊 Lockfile stats:"
+          echo "  - Lines: $LINES"
+          echo "  - Size: $SIZE"
           
-          if [ "$LINES" -lt 100 ]; then
-            echo "❌ Error: Lockfile appears incomplete (< 100 lines)"
+          # A complete lockfile for this project should have >1000 lines
+          # The current incomplete one has only ~350 lines
+          if [ "$LINES" -lt 1000 ]; then
+            echo "❌ Error: Lockfile appears incomplete (< 1000 lines)"
+            echo "Expected complete lockfile to include all nested dependencies for:"
+            echo "  - @babel/* packages"
+            echo "  - @typescript-eslint/*"  
+            echo "  - eslint plugins"
+            echo "  - vite and rollup dependencies"
+            echo "  - wrangler dependencies"
             exit 1
           fi
           
@@ -58,27 +76,37 @@ jobs:
         run: |
           echo "🧪 Testing lockfile with npm ci..."
           rm -rf node_modules
-          npm ci
-          echo "✅ npm ci successful"
+          npm ci --loglevel=verbose
+          echo "✅ npm ci successful - lockfile is valid"
           
-      - name: Commit changes
+      - name: Check for changes
+        id: git-check
+        run: |
+          git diff --exit-code package-lock.json || echo "changed=true" >> $GITHUB_OUTPUT
+          
+      - name: Commit and push changes
+        if: steps.git-check.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add package-lock.json
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "fix: Generate complete package-lock.json with all dependencies
+          git commit -m "fix: Generate complete package-lock.json with full dependency tree
 
 This commit adds a complete package-lock.json file that includes:
-- All dependency trees for @babel packages
-- Complete eslint and plugin dependencies  
-- Full dependency resolution for vite, rollup, wrangler
-- Proper integrity hashes for all packages
+- Full dependency trees for all @babel/* packages
+- Complete @typescript-eslint/* dependencies
+- All eslint and plugin dependencies with proper resolution
+- Full dependency resolution for vite, rollup, and wrangler
+- Proper integrity hashes for all packages and their transitive deps
 
-This resolves the lockfile integrity issues and enables proper
-reproducible builds with npm ci."
-            git push
-            echo "✅ Changes committed and pushed"
-          fi
+Generated with npm install --force to ensure clean, complete resolution.
+Tested with npm ci to verify integrity and completeness.
+
+This resolves lockfile integrity issues and enables proper reproducible builds."
+          git push
+          echo "✅ Changes committed and pushed"
+      
+      - name: No changes needed
+        if: steps.git-check.outputs.changed != 'true'
+        run: |
+          echo "ℹ️  No changes to commit - lockfile is already complete"
