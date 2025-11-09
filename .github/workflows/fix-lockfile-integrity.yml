@@ -179,38 +179,38 @@ jobs:
           PACKAGE_COUNT=$(jq '.packages | length' package-lock.json)
           INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
           
-          cat > fix-summary.md <<'EOF'
-# Lockfile Integrity Fix Summary
+          cat > fix-summary.md << EOF
+          # Lockfile Integrity Fix Summary
 
-## Problem Detected
-- ❌ Package-lock.json was incomplete or had integrity issues
-- ❌ This prevents proper dependency verification
-- ❌ Causes security and reproducibility issues
+          ## Problem Detected
+          - ❌ Package-lock.json was incomplete or had integrity issues
+          - ❌ This prevents proper dependency verification
+          - ❌ Causes security and reproducibility issues
 
-## Changes Made
-- ✅ Regenerated complete package-lock.json with valid integrity hashes
-- 📦 Fixed integrity for all packages in the dependency tree
-- 🔒 Enabled proper dependency verification
+          ## Changes Made
+          - ✅ Regenerated complete package-lock.json with valid integrity hashes
+          - 📦 Fixed integrity for all packages in the dependency tree
+          - 🔒 Enabled proper dependency verification
 
-## What This Fixes
-- ✅ Ensures packages are verified against their checksums
-- ✅ Prevents tampered or corrupted packages
-- ✅ Enables security scanning and audit tools
-- ✅ Ensures reproducible builds
-- ✅ Complies with npm security best practices
+          ## What This Fixes
+          - ✅ Ensures packages are verified against their checksums
+          - ✅ Prevents tampered or corrupted packages
+          - ✅ Enables security scanning and audit tools
+          - ✅ Ensures reproducible builds
+          - ✅ Complies with npm security best practices
 
-## Statistics
-- Total packages: $PACKAGE_COUNT
-- Packages with integrity hashes: $INTEGRITY_COUNT
+          ## Statistics
+          - Total packages: $PACKAGE_COUNT
+          - Packages with integrity hashes: $INTEGRITY_COUNT
 
-## Next Steps
-1. Review the integrity hash changes
-2. Merge to enable proper dependency verification
-3. All future installs will verify package integrity
+          ## Next Steps
+          1. Review the integrity hash changes
+          2. Merge to enable proper dependency verification
+          3. All future installs will verify package integrity
 
----
-*Generated automatically by fix-lockfile-integrity workflow*
-EOF
+          ---
+          *Generated automatically by fix-lockfile-integrity workflow*
+          EOF
           
       - name: Create Pull Request
         if: steps.check.outputs.has_issues == 'true'
