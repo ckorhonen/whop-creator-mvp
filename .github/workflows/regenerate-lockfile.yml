@@ -23,6 +23,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
+          ref: ${{ github.ref }}
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -36,6 +37,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
           echo "✅ Git configured"
+          echo "📍 Current branch: $(git branch --show-current)"
+          echo "📍 Current ref: ${{ github.ref }}"
       
       - name: Analyze current lockfile
         id: analyze
@@ -136,16 +139,22 @@ jobs:
           echo "📦 Packages with resolved: $(grep -c '\"resolved\":' package-lock.json 2>/dev/null || echo '0')"
           echo "💾 File size: $(du -h package-lock.json | cut -f1)"
       
-      - name: Commit and push changes
+      - name: Check for changes
+        id: check_changes
         if: steps.analyze.outputs.status != 'valid' || github.event.inputs.force == 'true'
         run: |
-          echo "=== Committing Changes ===="
-          
-          # Check if there are changes
           if git diff --quiet package-lock.json 2>/dev/null && git diff --cached --quiet package-lock.json 2>/dev/null; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
             echo "ℹ️  No changes detected in lockfile"
-            exit 0
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "✅ Changes detected in lockfile"
           fi
+      
+      - name: Commit and push changes
+        if: (steps.analyze.outputs.status != 'valid' || github.event.inputs.force == 'true') && steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          echo "=== Committing Changes ===="
           
           git add package-lock.json
           
@@ -168,18 +177,37 @@ This enables proper dependency verification and caching in CI/CD."
           
           echo ""
           echo "=== Pushing to GitHub ===="
+          echo "📍 Pushing to branch: $(git branch --show-current)"
+          echo "📍 Remote URL: $(git remote get-url origin)"
+          
+          # Get current branch
+          CURRENT_BRANCH=$(git branch --show-current)
           
           # Attempt to push with better error handling
-          if git push; then
+          # Use force-with-lease to be safer with concurrent changes
+          if git push origin "$CURRENT_BRANCH" --force-with-lease; then
             echo "✅ Successfully pushed changes!"
           else
-            echo "❌ ERROR: Failed to push changes"
-            echo "Checking git status:"
+            EXIT_CODE=$?
+            echo "❌ ERROR: Failed to push changes (exit code: $EXIT_CODE)"
+            echo ""
+            echo "=== Diagnostic Information ==="
+            echo "Git status:"
             git status
             echo ""
-            echo "Checking remote:"
-            git remote -v
-            exit 1
+            echo "Git log (last commit):"
+            git log -1 --oneline
+            echo ""
+            echo "Remote branches:"
+            git branch -r
+            echo ""
+            echo "Attempting simple push without force-with-lease..."
+            if git push origin "$CURRENT_BRANCH"; then
+              echo "✅ Simple push succeeded!"
+            else
+              echo "❌ Simple push also failed"
+              exit 1
+            fi
           fi
       
       - name: Summary
