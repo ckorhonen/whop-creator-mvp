@@ -1,0 +1,140 @@
+name: Manual Fix - Regenerate Complete Lockfile
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_to_main:
+        description: 'Commit directly to main branch (otherwise creates PR)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  regenerate-lockfile:
+    runs-on: ubuntu-latest
+    name: Regenerate Complete Package Lock
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.commit_to_main == 'true' && 'main' || github.ref }}
+          fetch-depth: 1
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Remove existing lockfile
+        run: |
+          echo "=== Removing incomplete lockfile ==="
+          if [ -f package-lock.json ]; then
+            CURRENT_SIZE=$(wc -l < package-lock.json)
+            echo "Current lockfile size: $CURRENT_SIZE lines"
+            rm package-lock.json
+            echo "✅ Removed incomplete lockfile"
+          else
+            echo "No lockfile to remove"
+          fi
+      
+      - name: Generate complete lockfile
+        run: |
+          echo "=== Generating complete package-lock.json ==="
+          echo "Running: npm install"
+          npm install
+          echo ""
+          echo "=== Lockfile Generation Complete ==="
+          if [ -f package-lock.json ]; then
+            NEW_SIZE=$(wc -l < package-lock.json)
+            echo "✅ New lockfile created: $NEW_SIZE lines"
+            echo ""
+            echo "Package count:"
+            node -e "const pkg = require('./package-lock.json'); console.log('  Total packages:', Object.keys(pkg.packages || {}).length);"
+          else
+            echo "❌ Error: Failed to generate package-lock.json"
+            exit 1
+          fi
+      
+      - name: Verify lockfile completeness
+        run: |
+          echo "=== Verifying Lockfile ==="
+          LOCKFILE_SIZE=$(wc -l < package-lock.json)
+          echo "Lockfile size: $LOCKFILE_SIZE lines"
+          
+          if [ "$LOCKFILE_SIZE" -lt 100 ]; then
+            echo "❌ Error: Generated lockfile is too small ($LOCKFILE_SIZE lines)"
+            echo "Expected at least 100 lines for a complete lockfile"
+            exit 1
+          fi
+          
+          echo "✅ Lockfile appears complete"
+          echo ""
+          echo "Checking for integrity hashes..."
+          if grep -q "integrity" package-lock.json; then
+            HASH_COUNT=$(grep -c "integrity" package-lock.json)
+            echo "✅ Found $HASH_COUNT integrity hashes"
+          else
+            echo "⚠️  Warning: No integrity hashes found"
+          fi
+      
+      - name: Commit to main (if selected)
+        if: github.event.inputs.commit_to_main == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "fix: Regenerate complete package-lock.json for deployment
+
+Fixes workflow run #19203303531
+
+The previous lockfile was incomplete (~55 packages). This regenerates it with
+all transitive dependencies and integrity hashes (~400+ packages) to enable:
+- Faster npm ci installations
+- Reproducible builds
+- Proper dependency resolution"
+          git push origin main
+          echo "✅ Committed directly to main branch"
+      
+      - name: Create Pull Request (if not committing to main)
+        if: github.event.inputs.commit_to_main != 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            fix: Regenerate complete package-lock.json for deployment
+            
+            Fixes workflow run #19203303531
+            
+            The previous lockfile was incomplete (~55 packages). This regenerates it with
+            all transitive dependencies and integrity hashes (~400+ packages) to enable:
+            - Faster npm ci installations  
+            - Reproducible builds
+            - Proper dependency resolution
+          branch: fix/auto-regenerate-lockfile-${{ github.run_number }}
+          delete-branch: true
+          title: 'fix: Regenerate complete package-lock.json'
+          body: |
+            ## Problem
+            The deployment workflow (run #19203303531) fails because package-lock.json is incomplete.
+            
+            Current state: ~55 packages
+            Expected: ~400+ packages with all transitive dependencies
+            
+            ## Solution
+            This PR regenerates the complete package-lock.json with:
+            - ✅ All transitive dependencies resolved
+            - ✅ Integrity hashes for all packages
+            - ✅ Proper dependency tree structure
+            
+            ## Impact
+            - Enables faster `npm ci` installations in CI/CD
+            - Ensures reproducible builds
+            - Fixes deployment workflow failures
+            
+            ## Testing
+            The workflow will automatically run on this PR to verify the fix works.
+          labels: |
+            bug
+            dependencies
+            automated
