@@ -15,10 +15,12 @@ on:
       - '.github/workflows/fix-lockfile-integrity.yml'
 
 # Required permissions for create-pull-request action
+# Added 'workflows: write' to ensure workflow can execute properly
 permissions:
   contents: write
   pull-requests: write
   actions: read
+  workflows: write
 
 jobs:
   fix-integrity:
@@ -59,7 +61,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ github.token }}
+          # Use secrets.GITHUB_TOKEN explicitly for better permission handling
+          token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: true
           
       - name: Setup Node.js
@@ -174,7 +177,7 @@ jobs:
             REASON="Fix package-lock.json integrity hashes"
           fi
           
-          cat > fix-summary.md << 'EOFMARKER'
+          cat > fix-summary.md <<'EOF'
 # Lockfile Integrity Fix Summary
 
 ## Problem Detected
@@ -204,7 +207,7 @@ REASON_PLACEHOLDER
 
 ---
 *Generated automatically by fix-lockfile-integrity workflow*
-EOFMARKER
+EOF
           
           # Replace placeholders
           sed -i "s/INTEGRITY_COUNT_PLACEHOLDER/$INTEGRITY_COUNT/g" fix-summary.md
@@ -221,7 +224,8 @@ EOFMARKER
         id: create_pr
         continue-on-error: true
         with:
-          token: ${{ github.token }}
+          # Explicitly use secrets.GITHUB_TOKEN for PR creation
+          token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "fix: Regenerate package-lock.json with correct integrity hashes\n\nFixed placeholder integrity hashes in package-lock.json:\n- Regenerated lockfile with valid SHA-512 integrity hashes\n- Enables proper package verification and security scanning\n- Prevents installation of tampered dependencies\n- Ensures reproducible and secure builds\n\nReason: ${{ github.event.inputs.reason || 'Fix package-lock.json integrity hashes' }}"
           branch: fix-lockfile-integrity-${{ github.run_number }}
           delete-branch: true
