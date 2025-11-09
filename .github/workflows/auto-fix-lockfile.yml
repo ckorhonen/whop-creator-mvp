@@ -30,7 +30,7 @@ jobs:
     steps:
       - name: Debug workflow context
         run: |
-          echo "🔍 Workflow Debug Information"
+          echo "🔍 === Workflow Debug Information ==="
           echo "Event: ${{ github.event_name }}"
           echo "Actor: ${{ github.actor }}"
           echo "Repository: ${{ github.repository }}"
@@ -38,12 +38,27 @@ jobs:
           echo "SHA: ${{ github.sha }}"
           echo "Run ID: ${{ github.run_id }}"
           echo "Run Number: ${{ github.run_number }}"
+          echo "Workflow: ${{ github.workflow }}"
+          echo "Job: ${{ github.job }}"
+          echo "Runner OS: ${{ runner.os }}"
+          echo "Runner Arch: ${{ runner.arch }}"
+          
+          # Validate token availability (without exposing it)
+          if [ -n "${{ secrets.GITHUB_TOKEN }}" ]; then
+            echo "✅ GITHUB_TOKEN is available and ready"
+          else
+            echo "❌ GITHUB_TOKEN is NOT available - workflow will fail"
+            exit 1
+          fi
+          
+          echo "========================================"
       
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
