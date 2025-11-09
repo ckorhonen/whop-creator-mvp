@@ -6,19 +6,16 @@ on:
     paths:
       - '.github/workflows/regenerate-complete-lockfile.yml'
 
-# Default to read-only permissions for pull_request events
+# Set write permissions for workflow_dispatch events
+# PR events will only run read-only validation steps
 permissions:
-  contents: read
-  pull-requests: read
+  contents: write
+  pull-requests: write
 
 jobs:
   regenerate-lockfile:
     name: Generate Complete package-lock.json
     runs-on: ubuntu-latest
-    # Grant write permissions only for workflow_dispatch
-    permissions:
-      contents: ${{ github.event_name == 'workflow_dispatch' && 'write' || 'read' }}
-      pull-requests: ${{ github.event_name == 'workflow_dispatch' && 'write' || 'read' }}
     
     steps:
       - name: Checkout repository
