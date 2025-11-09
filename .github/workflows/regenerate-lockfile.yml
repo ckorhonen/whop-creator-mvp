@@ -136,7 +136,7 @@ jobs:
           echo "=== Lockfile Statistics ===="
           echo "📊 Total lines: $(wc -l < package-lock.json)"
           echo "📦 Packages with integrity: $REAL_HASHES"
-          echo "📦 Packages with resolved: $(grep -c '\"resolved\":' package-lock.json 2>/dev/null || echo '0')"
+          echo "📦 Packages with resolved: $(grep -c '"resolved":' package-lock.json 2>/dev/null || echo '0')"
           echo "💾 File size: $(du -h package-lock.json | cut -f1)"
       
       - name: Check for changes
@@ -162,7 +162,7 @@ jobs:
           
           PLACEHOLDER_COUNT="${{ steps.analyze.outputs.placeholder_count }}"
           PLACEHOLDER_COUNT="${PLACEHOLDER_COUNT:-0}"
-          RESOLVED_COUNT=$(grep -c '\"resolved\":' package-lock.json 2>/dev/null || echo '0')
+          RESOLVED_COUNT=$(grep -c '"resolved":' package-lock.json 2>/dev/null || echo '0')
           
           git commit -m "🔧 Regenerate package-lock.json with real integrity hashes
 
@@ -230,7 +230,7 @@ This enables proper dependency verification and caching in CI/CD."
           echo "Status: ${{ steps.analyze.outputs.status }}"
           
           if [ -f package-lock.json ]; then
-            REAL_HASHES=$(grep -c '\"integrity\": \"sha' package-lock.json 2>/dev/null || echo "0")
+            REAL_HASHES=$(grep -c '"integrity": "sha' package-lock.json 2>/dev/null || echo "0")
             PLACEHOLDERS=$(grep -c "example-.*-hash" package-lock.json 2>/dev/null || echo "0")
             
             if [ "$PLACEHOLDERS" -eq "0" ] && [ "$REAL_HASHES" -gt "0" ]; then
