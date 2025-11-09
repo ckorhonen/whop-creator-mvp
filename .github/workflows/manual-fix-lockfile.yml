@@ -101,16 +101,7 @@ all transitive dependencies and integrity hashes (~400+ packages) to enable:
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: |
-            fix: Regenerate complete package-lock.json for deployment
-            
-            Fixes workflow run #19203303531
-            
-            The previous lockfile was incomplete (~55 packages). This regenerates it with
-            all transitive dependencies and integrity hashes (~400+ packages) to enable:
-            - Faster npm ci installations  
-            - Reproducible builds
-            - Proper dependency resolution
+          commit-message: "fix: Regenerate complete package-lock.json for deployment"
           branch: fix/auto-regenerate-lockfile-${{ github.run_number }}
           delete-branch: true
           title: 'fix: Regenerate complete package-lock.json'
@@ -134,7 +125,4 @@ all transitive dependencies and integrity hashes (~400+ packages) to enable:
             
             ## Testing
             The workflow will automatically run on this PR to verify the fix works.
-          labels: |
-            bug
-            dependencies
-            automated
+          labels: bug,dependencies,automated
