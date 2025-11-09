@@ -30,7 +30,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          # Note: npm cache is intentionally NOT enabled here because this workflow
+          # is designed to fix broken/missing lockfiles. The cache setup requires
+          # a valid package-lock.json which may not exist or be corrupted.
       
       - name: Install jq
         run: |
