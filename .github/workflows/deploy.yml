@@ -192,35 +192,58 @@ jobs:
         run: |
           echo "=== Deploying to Cloudflare Pages ==="
           
-          # Install wrangler if not available
-          if ! command -v wrangler &> /dev/null; then
-            echo "Installing wrangler globally..."
-            npm install -g wrangler
+          # Use npx to run wrangler from node_modules (installed via devDependencies)
+          echo "Checking wrangler availability..."
+          if npx wrangler --version; then
+            echo "✅ Wrangler is available"
+          else
+            echo "❌ Wrangler not found in devDependencies"
+            exit 1
           fi
-          
-          echo "Wrangler version: $(wrangler --version)"
           
           # Set up Cloudflare authentication
           export CLOUDFLARE_API_TOKEN="${{ secrets.CLOUDFLARE_API_TOKEN }}"
           export CLOUDFLARE_ACCOUNT_ID="${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
           
+          # Prepare commit message (escape quotes and limit length)
+          COMMIT_MSG=$(echo "${{ github.event.head_commit.message }}" | head -n 1 | sed 's/"/\\"/g' | cut -c1-72)
+          
           # Deploy to Cloudflare Pages
           echo "Deploying dist directory to Cloudflare Pages..."
-          wrangler pages deploy dist \
+          echo "Project: whop-creator-mvp"
+          echo "Branch: main"
+          echo "Commit: ${{ github.sha }}"
+          echo ""
+          
+          if npx wrangler pages deploy dist \
             --project-name=whop-creator-mvp \
             --branch=main \
-            --commit-hash="${{ github.sha }}" \
-            --commit-message="${{ github.event.head_commit.message }}" || {
-            echo "❌ Deployment failed!"
-            echo "Troubleshooting steps:"
+            --commit-dirty=true; then
+            echo ""
+            echo "✅ Successfully deployed to Cloudflare Pages!"
+          else
+            DEPLOY_EXIT_CODE=$?
+            echo ""
+            echo "❌ Deployment failed with exit code: $DEPLOY_EXIT_CODE"
+            echo ""
+            echo "🔍 Troubleshooting steps:"
             echo "1. Verify CLOUDFLARE_API_TOKEN has 'Cloudflare Pages:Edit' permissions"
+            echo "   • Go to: https://dash.cloudflare.com/profile/api-tokens"
+            echo "   • Create token with 'Account > Cloudflare Pages > Edit' permission"
+            echo ""
             echo "2. Verify CLOUDFLARE_ACCOUNT_ID is correct"
-            echo "3. Ensure the project 'whop-creator-mvp' exists in your Cloudflare account"
-            echo "4. Check if you have the correct permissions for the project"
+            echo "   • Find it in the Cloudflare dashboard URL"
+            echo "   • Format: 32-character hexadecimal string"
+            echo ""
+            echo "3. Ensure the project 'whop-creator-mvp' exists"
+            echo "   • Go to: https://dash.cloudflare.com/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/pages"
+            echo "   • Create the project if it doesn't exist"
+            echo ""
+            echo "4. Check project permissions"
+            echo "   • Ensure your API token has access to this specific project"
+            echo ""
             exit 1
-          }
-          
-          echo "✅ Successfully deployed to Cloudflare Pages!"
+          fi
           echo "=============================="
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -233,6 +256,11 @@ jobs:
           echo "=== Deployment Successful ==="
           echo "✅ Successfully deployed to Cloudflare Pages!"
           echo "Project: whop-creator-mvp"
+          echo "Branch: main"
+          echo "Commit: ${{ github.sha }}"
+          echo ""
+          echo "🌐 View your deployment:"
+          echo "https://whop-creator-mvp.pages.dev"
           echo "=============================="
           
       - name: Deployment Skipped
