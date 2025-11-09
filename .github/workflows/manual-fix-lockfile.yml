@@ -18,7 +18,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.commit_to_main == 'true' && 'main' || github.ref }}
+          ref: ${{ github.event.inputs.commit_to_main == true && 'main' || github.ref }}
           fetch-depth: 1
       
       - name: Setup Node.js
@@ -79,7 +79,7 @@ jobs:
           fi
       
       - name: Commit to main (if selected)
-        if: github.event.inputs.commit_to_main == 'true'
+        if: ${{ github.event.inputs.commit_to_main == true }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -97,7 +97,7 @@ all transitive dependencies and integrity hashes (~400+ packages) to enable:
           echo "✅ Committed directly to main branch"
       
       - name: Create Pull Request (if not committing to main)
-        if: github.event.inputs.commit_to_main != 'true'
+        if: ${{ github.event.inputs.commit_to_main != true }}
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
