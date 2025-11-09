@@ -17,12 +17,64 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+      
+      - name: Validate Environment
+        run: |
+          echo "Node version: $(node --version)"
+          echo "NPM version: $(npm --version)"
+          echo "Checking for package.json..."
+          if [ ! -f package.json ]; then
+            echo "❌ Error: package.json not found"
+            exit 1
+          fi
+          echo "✅ package.json found"
+          
+      - name: Check GitHub Secrets
+        run: |
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
+            echo "❌ Error: CLOUDFLARE_API_TOKEN secret is not set"
+            echo "Please add it in Settings → Secrets and variables → Actions"
+            echo "Get your token from: https://dash.cloudflare.com/profile/api-tokens"
+            exit 1
+          fi
+          if [ -z "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]; then
+            echo "❌ Error: CLOUDFLARE_ACCOUNT_ID secret is not set"
+            echo "Please add it in Settings → Secrets and variables → Actions"
+            echo "Find your Account ID in the Cloudflare dashboard"
+            exit 1
+          fi
+          echo "✅ All required secrets are configured"
       
       - name: Install dependencies
-        run: npm install
+        run: |
+          echo "Installing dependencies..."
+          if [ -f package-lock.json ]; then
+            echo "Using package-lock.json with npm ci"
+            npm ci
+          else
+            echo "⚠️  Warning: package-lock.json not found, using npm install"
+            echo "Consider running 'npm install' locally and committing package-lock.json"
+            npm install
+          fi
       
       - name: Build
-        run: npm run build
+        run: |
+          echo "Building project..."
+          npm run build
+          echo "Build completed"
+      
+      - name: Verify Build Output
+        run: |
+          echo "Verifying build output..."
+          if [ ! -d "dist" ]; then
+            echo "❌ Error: dist directory not found after build"
+            echo "Build may have failed. Check the Build step logs above."
+            exit 1
+          fi
+          echo "✅ dist directory exists"
+          echo "Contents of dist directory:"
+          ls -la dist/
       
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
