@@ -15,10 +15,10 @@ on:
     branches:
       - main
 
-# Required permissions for create-pull-request action
+# Use minimal permissions by default
+# Write permissions only granted when needed (workflow_dispatch)
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
   actions: read
 
 jobs:
@@ -27,10 +27,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     
-    # Explicit permissions at job level (redundant but ensures they apply)
+    # Grant write permissions only for workflow_dispatch
+    # For push events, this job runs in read-only mode (validation only)
     permissions:
-      contents: write
-      pull-requests: write
+      contents: ${{ github.event_name == 'workflow_dispatch' && 'write' || 'read' }}
+      pull-requests: ${{ github.event_name == 'workflow_dispatch' && 'write' || 'read' }}
       actions: read
     
     steps:
@@ -186,7 +187,8 @@ $REASON
 EOF
           
       - name: Create Pull Request
-        if: steps.check.outputs.has_issues == 'true'
+        # Only create PR when manually dispatched, not on automatic push events
+        if: steps.check.outputs.has_issues == 'true' && github.event_name == 'workflow_dispatch'
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -201,7 +203,25 @@ EOF
             automated
           assignees: ${{ github.actor }}
           
+      - name: Report validation results (push events)
+        if: github.event_name == 'push'
+        run: |
+          if [ "${{ steps.check.outputs.has_issues }}" == "true" ]; then
+            echo "⚠️  VALIDATION FAILED: Lockfile has integrity issues"
+            echo ""
+            echo "To fix these issues, manually trigger the workflow:"
+            echo "  1. Go to Actions → Fix Lockfile Integrity"
+            echo "  2. Click 'Run workflow'"
+            echo "  3. This will create a PR with the fixes"
+            echo ""
+            cat fix-summary.md
+            exit 1
+          else
+            echo "✅ VALIDATION PASSED: Lockfile integrity is healthy!"
+          fi
+          
       - name: Workflow completion
+        if: github.event_name == 'workflow_dispatch'
         run: |
           if [ "${{ steps.check.outputs.has_issues }}" == "true" ]; then
             echo "🎉 Lockfile integrity fix workflow completed successfully!"

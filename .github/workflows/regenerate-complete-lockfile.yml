@@ -3,6 +3,8 @@ name: Regenerate Complete Lockfile
 on:
   workflow_dispatch:
 
+# Set write permissions for workflow_dispatch events
+# PR events will only run read-only validation steps
 permissions:
   contents: write
   pull-requests: write
