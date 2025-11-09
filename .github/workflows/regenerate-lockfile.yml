@@ -84,6 +84,10 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
+          # Get current branch name
+          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          echo "Current branch: $CURRENT_BRANCH"
+          
           git add package-lock.json
           
           if git diff --staged --quiet; then
@@ -100,52 +104,9 @@ Changes:
 - Proper integrity hashes for all packages
 - Verified lockfile format
 
-This resolves workflow run #19202893487 failure.
+This resolves workflow run #19202965307 failure.
 Fixes npm install warnings and enables proper dependency caching."
           
-          git push origin fix-deployment-run-19202893487
+          git push origin "$CURRENT_BRANCH"
           
           echo "✅ Changes committed and pushed"
-      
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "🔧 Regenerate complete package-lock.json"
-          branch: fix-deployment-run-19202893487
-          title: "🔧 Fix: Regenerate complete package-lock.json for deployment"
-          body: |
-            ## Problem
-            Workflow run #19202893487 failed due to an incomplete `package-lock.json` file with placeholder integrity hashes.
-            
-            ## Solution
-            This PR regenerates the complete `package-lock.json` with:
-            
-            ✅ **Complete dependency tree** - All transitive dependencies resolved
-            ✅ **Valid integrity hashes** - Proper SHA-512 hashes for all packages  
-            ✅ **Reproducible builds** - Ensures consistent installations across environments
-            ✅ **NPM caching** - Enables GitHub Actions caching for faster builds
-            
-            ## Impact
-            - **Fixes**: Deployment workflow failures
-            - **Improves**: Build speed through proper caching
-            - **Ensures**: Reproducible and secure dependency installation
-            
-            ## Testing
-            The workflow that generated this PR:
-            - ✅ Verified lockfile validity
-            - ✅ Checked integrity hash format
-            - ✅ Confirmed all dependencies are resolved
-            
-            ## Next Steps
-            1. Review the lockfile changes
-            2. Merge this PR
-            3. Re-run the deployment workflow
-            4. Deployments should now complete successfully!
-            
-            ---
-            *This fix was automatically generated in response to workflow run #19202893487*
-          labels: |
-            dependencies
-            bugfix
-            deployment
