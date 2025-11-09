@@ -17,29 +17,61 @@ jobs:
     name: Deploy
     timeout-minutes: 15
     steps:
+      - name: Pre-flight Check
+        run: |
+          echo "=== Pre-flight Validation ==="
+          echo "GitHub Actor: ${{ github.actor }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch/Ref: ${{ github.ref }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Runner OS: ${{ runner.os }}"
+          echo "Runner Arch: ${{ runner.arch }}"
+          echo "Working Directory: $(pwd)"
+          echo "✅ Pre-flight check complete"
+          echo "=============================="
+      
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
         timeout-minutes: 2
       
-      - name: Debug - Show environment
+      - name: Verify Checkout
         run: |
-          echo "=== Environment Debug Info ==="
+          echo "=== Verifying Checkout ==="
           echo "Working directory: $(pwd)"
           echo "Repository contents:"
           ls -la
           echo "Git status:"
-          git status || echo "Git not initialized"
-          echo "Runner OS: ${{ runner.os }}"
-          echo "Runner architecture: ${{ runner.arch }}"
+          git status
+          echo "✅ Checkout verified"
           echo "=============================="
       
-      - name: Setup Node.js
+      - name: Check for package-lock.json
+        id: check_lockfile
+        run: |
+          if [ -f package-lock.json ]; then
+            echo "lockfile_exists=true" >> $GITHUB_OUTPUT
+            echo "✅ package-lock.json found - npm cache will be enabled"
+          else
+            echo "lockfile_exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️  package-lock.json not found - npm cache will be disabled"
+          fi
+      
+      - name: Setup Node.js (with cache)
+        if: steps.check_lockfile.outputs.lockfile_exists == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
+        timeout-minutes: 2
+      
+      - name: Setup Node.js (without cache)
+        if: steps.check_lockfile.outputs.lockfile_exists != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
         timeout-minutes: 2
       
       - name: Validate Environment
@@ -283,7 +315,7 @@ jobs:
             echo "   • Format: 32-character hexadecimal string"
             echo ""
             echo "3. Ensure the project '$PROJECT_NAME' exists:"
-            echo "   • Go to: https://dash.cloudflare.com/\${CLOUDFLARE_ACCOUNT_ID}/pages"
+            echo "   • Go to: https://dash.cloudflare.com/${CLOUDFLARE_ACCOUNT_ID}/pages"
             echo "   • Create the project if it doesn't exist"
             echo "   • Project name must match wrangler.toml exactly"
             echo ""
