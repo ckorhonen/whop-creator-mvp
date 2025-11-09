@@ -80,7 +80,7 @@ jobs:
           echo "✅ package-lock.json generated successfully with npm install"
           
       - name: Generate complete lockfile (fallback method)
-        if: steps.primary_install.outcome == 'failure'
+        if: ${{ steps.primary_install.outcome == 'failure' }}
         run: |
           echo "🔨 Generating complete package-lock.json (fallback method)..."
           
