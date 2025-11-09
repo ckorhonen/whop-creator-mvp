@@ -12,6 +12,7 @@ on:
       - 'package.json'
     branches:
       - main
+      - 'fix/workflow-circular-trigger'  # Allow testing on this branch
 
 # Required permissions for create-pull-request action
 permissions:
@@ -25,8 +26,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     
-    # Prevent circular triggers - skip if triggered by automated bot commits
-    if: github.actor != 'github-actions[bot]' && github.actor != 'create-pull-request[bot]'
+    # Prevent circular triggers - skip if:
+    # 1. Triggered by automated bot commits
+    # 2. Triggered by workflow_run from this same workflow
+    # 3. Branch name starts with 'fix-lockfile-integrity-' (our own PR branches)
+    if: |
+      github.actor != 'github-actions[bot]' && 
+      github.actor != 'create-pull-request[bot]' &&
+      !startsWith(github.ref, 'refs/heads/fix-lockfile-integrity-')
     
     # Explicit permissions at job level (redundant but ensures they apply)
     permissions:
