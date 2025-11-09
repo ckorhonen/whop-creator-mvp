@@ -10,7 +10,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     name: Deploy
-    timeout-minutes: 15  # Prevent hanging workflows
+    timeout-minutes: 20  # Increased from 15 for more buffer
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -116,17 +116,67 @@ jobs:
             echo "Using npm install (slower and less reproducible)"
           fi
           
-          if [ "$USE_NPM_CI" = true ]; then
-            npm ci --loglevel=error
-          else
-            npm install --loglevel=error
+          # Function to try npm install with retries
+          install_dependencies() {
+            local max_retries=2
+            local retry_count=0
+            
+            while [ $retry_count -le $max_retries ]; do
+              if [ $retry_count -gt 0 ]; then
+                echo ""
+                echo "⚠️  Retry attempt $retry_count of $max_retries"
+                echo "Cleaning npm cache..."
+                npm cache clean --force
+                sleep 5
+              fi
+              
+              echo "Installing dependencies (attempt $((retry_count + 1)))..."
+              
+              if [ "$USE_NPM_CI" = true ]; then
+                if npm ci --loglevel=error; then
+                  echo "✅ Dependencies installed successfully with npm ci"
+                  return 0
+                fi
+              else
+                if npm install --loglevel=error; then
+                  echo "✅ Dependencies installed successfully with npm install"
+                  return 0
+                fi
+              fi
+              
+              retry_count=$((retry_count + 1))
+              
+              if [ $retry_count -le $max_retries ]; then
+                echo "❌ Installation failed, will retry..."
+              fi
+            done
+            
             echo ""
-            echo "💡 To speed up future builds:"
-            echo "   Run 'npm install' locally and commit the complete package-lock.json"
+            echo "❌ Failed to install dependencies after $((max_retries + 1)) attempts"
+            echo ""
+            echo "🔍 Troubleshooting information:"
+            echo "- npm version: $(npm --version)"
+            echo "- Node version: $(node --version)"
+            echo "- Network connectivity to npm registry:"
+            curl -I https://registry.npmjs.org/ || echo "Cannot reach npm registry"
+            echo ""
+            echo "💡 Possible solutions:"
+            echo "1. Try re-running the workflow (may be a transient npm registry issue)"
+            echo "2. Generate a package-lock.json file locally and commit it"
+            echo "3. Check if any packages in package.json are unavailable"
+            return 1
+          }
+          
+          # Run the installation
+          if ! install_dependencies; then
+            exit 1
           fi
-          echo "✅ Dependencies installed"
+          
+          echo ""
+          echo "💡 To speed up future builds:"
+          echo "   Run 'npm install' locally and commit the complete package-lock.json"
           echo "=============================="
-        timeout-minutes: 5
+        timeout-minutes: 10  # Increased from 5 to handle slow npm install without lockfile
       
       - name: Type Check
         continue-on-error: true  # Don't fail workflow on type errors
@@ -144,10 +194,35 @@ jobs:
       - name: Build
         run: |
           echo "=== Building Project ==="
-          npm run build
-          echo "✅ Build completed successfully"
+          
+          # Pre-build validation
+          echo "Validating build configuration..."
+          if [ ! -f vite.config.ts ]; then
+            echo "⚠️  Warning: vite.config.ts not found"
+          else
+            echo "✅ vite.config.ts found"
+          fi
+          
+          echo ""
+          echo "Starting build process..."
+          if npm run build 2>&1 | tee build.log; then
+            echo "✅ Build completed successfully"
+          else
+            echo ""
+            echo "❌ Build failed!"
+            echo ""
+            echo "🔍 Build error details:"
+            echo "Last 50 lines of build output:"
+            tail -n 50 build.log || cat build.log
+            echo ""
+            echo "💡 Common build issues:"
+            echo "1. TypeScript errors (check 'npm run typecheck')"
+            echo "2. Missing dependencies (verify package.json)"
+            echo "3. Import path errors (check file paths in source)"
+            exit 1
+          fi
           echo "=============================="
-        timeout-minutes: 5
+        timeout-minutes: 8  # Increased from 5 for complex builds
       
       - name: Verify Build Output
         run: |
@@ -165,6 +240,9 @@ jobs:
           echo ""
           echo "Build size:"
           du -sh dist/
+          echo ""
+          echo "File count:"
+          find dist -type f | wc -l
           echo "=============================="
       
       - name: Deploy to Cloudflare Pages
