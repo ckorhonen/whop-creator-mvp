@@ -27,8 +27,6 @@ jobs:
     
     steps:
       - name: Debug - Workflow context validation
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
         run: |
           echo "🔍 === Workflow Context Debug Information ==="
           echo "Repository: ${{ github.repository }}"
@@ -42,15 +40,7 @@ jobs:
           echo "Job: ${{ github.job }}"
           echo "Runner OS: ${{ runner.os }}"
           echo "Runner Arch: ${{ runner.arch }}"
-          
-          # Check token availability (without exposing it)
-          if [ -n "${GITHUB_TOKEN}" ]; then
-            echo "✅ GITHUB_TOKEN is available"
-          else
-            echo "❌ GITHUB_TOKEN is NOT available"
-            exit 1
-          fi
-          
+          echo "Token available: ${{ github.token != '' }}"
           echo "================================================"
           
       - name: Checkout repository
@@ -212,6 +202,8 @@ EOF
         # Only create PR when manually dispatched, not on automatic push events
         if: steps.check.outputs.has_issues == 'true' && github.event_name == 'workflow_dispatch'
         uses: peter-evans/create-pull-request@v6
+        id: create_pr
+        continue-on-error: true
         with:
           token: ${{ github.token }}
           commit-message: |
@@ -233,6 +225,23 @@ EOF
             dependencies
             automated
           assignees: ${{ github.actor }}
+          
+      - name: PR Creation Status
+        if: steps.check.outputs.has_issues == 'true' && github.event_name == 'workflow_dispatch'
+        run: |
+          if [ "${{ steps.create_pr.outcome }}" == "success" ]; then
+            echo "✅ Pull request created successfully!"
+            echo "PR Number: ${{ steps.create_pr.outputs.pull-request-number }}"
+            echo "PR URL: ${{ steps.create_pr.outputs.pull-request-url }}"
+          else
+            echo "⚠️  Could not create pull request automatically"
+            echo "This may be due to permissions or existing PR"
+            echo ""
+            echo "Manual steps to apply fix:"
+            echo "1. Review the changes in this workflow run"
+            echo "2. Commit the regenerated package-lock.json manually"
+            echo "3. Create a PR with the changes"
+          fi
           
       - name: Report validation results (push events)
         if: github.event_name == 'push'
