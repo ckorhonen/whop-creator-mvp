@@ -14,9 +14,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        timeout-minutes: 2
         with:
           fetch-depth: 1  # Shallow clone for faster checkout
-        timeout-minutes: 2
       
       - name: Debug - Show environment
         run: |
@@ -32,13 +32,13 @@ jobs:
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
+        timeout-minutes: 3
         with:
           node-version: '20'
           # Note: cache is disabled because there's no package-lock.json
           # To enable caching, generate a complete lockfile with 'npm install'
           # and commit it, then uncomment the line below:
           # cache: 'npm'
-        timeout-minutes: 3
       
       - name: Validate Environment
         run: |
@@ -93,6 +93,7 @@ jobs:
           echo "=============================="
       
       - name: Install dependencies
+        timeout-minutes: 5
         run: |
           echo "=== Installing Dependencies ==="
           
@@ -126,10 +127,10 @@ jobs:
           fi
           echo "✅ Dependencies installed"
           echo "=============================="
-        timeout-minutes: 5
       
       - name: Type Check
         continue-on-error: true  # Don't fail workflow on type errors
+        timeout-minutes: 3
         run: |
           echo "=== Running Type Check ==="
           npm run typecheck || {
@@ -139,15 +140,14 @@ jobs:
           }
           echo "✅ Type check passed"
           echo "=============================="
-        timeout-minutes: 3
       
       - name: Build
+        timeout-minutes: 5
         run: |
           echo "=== Building Project ==="
           npm run build
           echo "✅ Build completed successfully"
           echo "=============================="
-        timeout-minutes: 5
       
       - name: Verify Build Output
         run: |
@@ -170,11 +170,11 @@ jobs:
       - name: Deploy to Cloudflare Pages
         if: steps.check_secrets.outputs.secrets_configured == 'true'
         uses: cloudflare/wrangler-action@v3
+        timeout-minutes: 5
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist --project-name=whop-creator-mvp
-        timeout-minutes: 5
           
       - name: Deployment Skipped
         if: steps.check_secrets.outputs.secrets_configured != 'true'
