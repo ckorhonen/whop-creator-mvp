@@ -4,9 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       target_branch:
-        description: 'Target branch to commit to'
+        description: 'Target branch to commit to (leave empty to use current branch)'
         required: false
-        default: 'main'
         type: string
 
 jobs:
@@ -17,16 +16,38 @@ jobs:
       pull-requests: write
     
     steps:
+      - name: Determine target branch
+        id: branch
+        run: |
+          if [ -n "${{ inputs.target_branch }}" ]; then
+            echo "branch=${{ inputs.target_branch }}" >> $GITHUB_OUTPUT
+            echo "Using input target branch: ${{ inputs.target_branch }}"
+          else
+            echo "branch=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "Using current branch: ${{ github.ref_name }}"
+          fi
+      
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.target_branch || 'main' }}
+          ref: ${{ steps.branch.outputs.branch }}
           fetch-depth: 1
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+      
+      - name: Verify package.json exists
+        run: |
+          if [ ! -f package.json ]; then
+            echo "❌ Error: package.json not found in repository"
+            exit 1
+          fi
+          echo "✅ package.json found"
+          echo ""
+          echo "Current dependencies:"
+          cat package.json | grep -A 20 '"dependencies"' || echo "No dependencies found"
       
       - name: Remove existing incomplete lockfile
         run: |
@@ -90,7 +111,7 @@ This lockfile was generated to fix deployment issues:
 Generated with npm install on Node.js 20"
             git push
             echo "has_changes=true" >> $GITHUB_OUTPUT
-            echo "✅ Changes committed and pushed"
+            echo "✅ Changes committed and pushed to ${{ steps.branch.outputs.branch }}"
           fi
       
       - name: Success Summary
@@ -98,7 +119,7 @@ Generated with npm install on Node.js 20"
         run: |
           echo "=== ✅ Complete package-lock.json Generated Successfully ==="
           echo ""
-          echo "📦 The complete package-lock.json has been added to: ${{ inputs.target_branch || 'main' }}"
+          echo "📦 The complete package-lock.json has been added to: ${{ steps.branch.outputs.branch }}"
           echo ""
           echo "Next steps:"
           echo "1. Verify GitHub Secrets are configured:"
