@@ -9,7 +9,8 @@ on:
         default: 'Fix package-lock.json integrity hashes'
   push:
     branches:
-      - '**'
+      - 'main'
+      - 'fix/**'
 
 # Required permissions for create-pull-request action
 permissions:
@@ -21,6 +22,12 @@ jobs:
     name: Fix Package Lockfile Integrity
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    
+    # Explicit permissions at job level (ensures they apply)
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
     
     steps:
       - name: Debug - Check permissions
