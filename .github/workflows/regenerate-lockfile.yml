@@ -120,7 +120,7 @@ jobs:
             exit 1
           fi
           
-          # Count real integrity hashes
+          # Count real integrity hashes (fixed pattern - no escaped quotes in single quotes)
           REAL_HASHES=$(grep -c '"integrity": "sha' package-lock.json 2>/dev/null || echo "0")
           
           if [ "$REAL_HASHES" -eq "0" ]; then
@@ -202,7 +202,7 @@ This enables proper dependency verification and caching in CI/CD."
           echo "Status: ${{ steps.analyze.outputs.status }}"
           
           if [ -f package-lock.json ]; then
-            # Fixed grep pattern - removed escaped quotes for proper matching
+            # Fixed grep pattern - no escaped quotes in single quotes
             REAL_HASHES=$(grep -c '"integrity": "sha' package-lock.json 2>/dev/null || echo "0")
             PLACEHOLDERS=$(grep -c "example-.*-hash" package-lock.json 2>/dev/null || echo "0")
             
