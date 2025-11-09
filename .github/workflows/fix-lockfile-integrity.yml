@@ -10,8 +10,6 @@ on:
   push:
     paths:
       - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/fix-lockfile-integrity.yml'
     branches:
       - main
 
