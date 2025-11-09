@@ -153,7 +153,7 @@ jobs:
           PACKAGE_COUNT=$(jq '.packages | length' package-lock.json)
           INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
           
-          cat > fix-summary.md << 'EOF'
+          cat > fix-summary.md << 'ENDOFSUMMARY'
           # Lockfile Integrity Fix Summary
           
           ## Problem Detected
@@ -180,7 +180,7 @@ jobs:
           
           ---
           *Generated automatically by fix-lockfile-integrity workflow*
-          EOF
+          ENDOFSUMMARY
           
       - name: Create Pull Request
         if: steps.check.outputs.has_issues == 'true'
