@@ -1,0 +1,187 @@
+name: Manual Fix Incomplete Lockfile
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to fix (leave empty for current branch)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  fix-lockfile:
+    name: Fix Incomplete Package Lockfile
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install jq
+        run: |
+          echo "📦 Installing jq for JSON processing..."
+          sudo apt-get update -qq
+          sudo apt-get install -y jq
+          
+      - name: Check lockfile status
+        id: check
+        run: |
+          echo "🔍 Checking package-lock.json status..."
+          
+          if [ ! -f "package-lock.json" ]; then
+            echo "⚠️  package-lock.json not found"
+            echo "needs_fix=true" >> $GITHUB_OUTPUT
+            echo "reason=missing" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Check if lockfile is incomplete
+          PACKAGE_COUNT=$(jq '.packages | length' package-lock.json)
+          INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
+          
+          echo "📦 Total packages: $PACKAGE_COUNT"
+          echo "🔒 Packages with integrity: $INTEGRITY_COUNT"
+          
+          if [ "$INTEGRITY_COUNT" -eq 0 ] && [ "$PACKAGE_COUNT" -le 1 ]; then
+            echo "❌ Lockfile is incomplete - missing dependency packages with integrity hashes"
+            echo "needs_fix=true" >> $GITHUB_OUTPUT
+            echo "reason=incomplete" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Check for placeholder hashes
+          if grep -q "example-integrity-hash\|example-.*-hash" package-lock.json; then
+            echo "❌ Found placeholder integrity hashes"
+            echo "needs_fix=true" >> $GITHUB_OUTPUT
+            echo "reason=placeholder" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "✅ Lockfile appears to be complete"
+          echo "needs_fix=false" >> $GITHUB_OUTPUT
+          
+      - name: Clean npm state
+        if: steps.check.outputs.needs_fix == 'true'
+        run: |
+          echo "🧹 Cleaning npm cache and removing old lockfile..."
+          rm -rf node_modules package-lock.json
+          npm cache clean --force
+          
+      - name: Validate package.json
+        if: steps.check.outputs.needs_fix == 'true'
+        run: |
+          echo "📋 Validating package.json..."
+          if [ ! -f "package.json" ]; then
+            echo "❌ package.json not found!"
+            exit 1
+          fi
+          
+          if ! jq empty package.json 2>/dev/null; then
+            echo "❌ package.json is not valid JSON!"
+            exit 1
+          fi
+          
+          echo "✅ package.json is valid"
+          
+      - name: Generate complete lockfile
+        if: steps.check.outputs.needs_fix == 'true'
+        run: |
+          echo "🔨 Generating complete package-lock.json with integrity hashes..."
+          npm install --package-lock-only
+          
+          if [ ! -f "package-lock.json" ]; then
+            echo "❌ Failed to generate package-lock.json"
+            exit 1
+          fi
+          
+          echo "✅ package-lock.json generated successfully"
+          
+      - name: Verify integrity hashes
+        if: steps.check.outputs.needs_fix == 'true'
+        run: |
+          echo "🔍 Verifying integrity hashes..."
+          
+          PACKAGE_COUNT=$(jq '.packages | length' package-lock.json)
+          INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
+          
+          echo "📦 Total packages: $PACKAGE_COUNT"
+          echo "🔒 Packages with integrity: $INTEGRITY_COUNT"
+          
+          if [ "$INTEGRITY_COUNT" -eq 0 ]; then
+            echo "❌ No integrity hashes found after generation!"
+            exit 1
+          fi
+          
+          # Check for placeholder hashes
+          if grep -q "example-integrity-hash\|example-.*-hash" package-lock.json; then
+            echo "❌ Still found placeholder integrity hashes!"
+            exit 1
+          fi
+          
+          echo "✅ Verified $INTEGRITY_COUNT packages with valid integrity hashes"
+          
+      - name: Test installation
+        if: steps.check.outputs.needs_fix == 'true'
+        run: |
+          echo "🧪 Testing npm ci with generated lockfile..."
+          rm -rf node_modules
+          npm ci
+          echo "✅ npm ci successful - lockfile is valid!"
+          
+      - name: Commit changes
+        if: steps.check.outputs.needs_fix == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add package-lock.json
+          
+          REASON="${{ steps.check.outputs.reason }}"
+          case $REASON in
+            missing)
+              COMMIT_MSG="fix: Add complete package-lock.json with integrity hashes"
+              ;;
+            incomplete)
+              COMMIT_MSG="fix: Generate complete package-lock.json with all dependency integrity hashes"
+              ;;
+            placeholder)
+              COMMIT_MSG="fix: Replace placeholder integrity hashes with valid ones"
+              ;;
+            *)
+              COMMIT_MSG="fix: Regenerate package-lock.json with correct integrity hashes"
+              ;;
+          esac
+          
+          git commit -m "$COMMIT_MSG"
+          git push
+          
+          echo "✅ Changes committed and pushed"
+          
+      - name: Summary
+        run: |
+          if [ "${{ steps.check.outputs.needs_fix }}" == "true" ]; then
+            echo "🎉 Successfully fixed incomplete package-lock.json!"
+            echo ""
+            echo "Changes have been committed and pushed to the branch."
+            echo ""
+            echo "The lockfile now includes:"
+            INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
+            echo "  - ✅ $INTEGRITY_COUNT packages with valid integrity hashes"
+            echo "  - ✅ Complete dependency tree"
+            echo "  - ✅ Security verification enabled"
+          else
+            echo "✅ No fixes needed - lockfile is already complete and valid!"
+          fi
