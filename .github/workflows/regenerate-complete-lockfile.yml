@@ -12,9 +12,13 @@ on:
           - 'true'
           - 'false'
 
-# Workflow-level permissions (default for all jobs)
+# Workflow-level permissions - explicit and comprehensive
+# This ensures workflow_dispatch has all necessary permissions
 permissions:
-  contents: write  # Changed to write to allow push access
+  contents: write      # Allow pushing commits
+  actions: read        # Allow reading workflow status
+  pull-requests: write # Allow PR operations if needed
+  statuses: write      # Allow status updates
 
 jobs:
   regenerate-and-commit:
@@ -25,6 +29,7 @@ jobs:
     # Explicitly stated for clarity
     permissions:
       contents: write
+      actions: read
     
     steps:
       - name: Debug workflow context
