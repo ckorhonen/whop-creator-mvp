@@ -1,7 +1,7 @@
 {
   "name": "whop-creator-mvp",
   "version": "0.1.0",
-  "description": "Whop Creator MVP - A modern React application for Whop creators",
+  "description": "Whop Creator MVP - A modern React application for Whop creators (lockfile generation trigger)",
   "private": true,
   "type": "module",
   "scripts": {
