@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   regenerate-lockfile:
@@ -107,6 +108,8 @@ jobs:
           echo "✅ npm ci successful!"
       
       - name: Commit and push complete lockfile
+        # Only commit when manually triggered, not on PR events (read-only context)
+        if: github.event_name == 'workflow_dispatch'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -142,6 +145,12 @@ a complete dependency tree with proper integrity verification."
           echo "  Total packages: $PACKAGES"
           echo "  With integrity: $INTEGRITY_COUNT"
           echo ""
-          echo "✅ The complete package-lock.json has been committed to this branch"
-          echo "✅ All future workflow runs will have proper dependencies"
-          echo "✅ npm ci will work correctly with the complete lockfile"
+          
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "✅ The complete package-lock.json has been committed to this branch"
+            echo "✅ All future workflow runs will have proper dependencies"
+            echo "✅ npm ci will work correctly with the complete lockfile"
+          else
+            echo "ℹ️  This was a validation run (PR trigger)"
+            echo "ℹ️  To commit changes, manually trigger this workflow via workflow_dispatch"
+          fi
