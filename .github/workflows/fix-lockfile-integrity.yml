@@ -12,6 +12,7 @@ on:
       - '**'
     paths:
       - 'package.json'
+      - '.github/workflows/fix-lockfile-integrity.yml'
 
 # Required permissions for create-pull-request action
 permissions:
