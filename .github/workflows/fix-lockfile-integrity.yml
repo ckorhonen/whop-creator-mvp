@@ -148,41 +148,41 @@ jobs:
             REASON="Fix package-lock.json integrity hashes"
           fi
           
-          cat > fix-summary.md << 'EOF'
-# Lockfile Integrity Fix Summary
-
-## Problem Detected
-- ❌ Package-lock.json contained placeholder integrity hashes
-- ❌ This prevents proper dependency verification
-- ❌ Causes security and reproducibility issues
-
-## Changes Made
-EOF
+          cat > fix-summary.md << EOF
+          # Lockfile Integrity Fix Summary
+          
+          ## Problem Detected
+          - ❌ Package-lock.json contained placeholder integrity hashes
+          - ❌ This prevents proper dependency verification
+          - ❌ Causes security and reproducibility issues
+          
+          ## Changes Made
+          EOF
           echo "- ✅ Regenerated package-lock.json with valid integrity hashes" >> fix-summary.md
           echo "- 📦 Fixed integrity for $INTEGRITY_COUNT out of $PACKAGE_COUNT packages" >> fix-summary.md
           echo "- 🔒 Enabled proper dependency verification" >> fix-summary.md
-          cat >> fix-summary.md << 'EOF'
-
-## What This Fixes
-- ✅ Ensures packages are verified against their checksums
-- ✅ Prevents tampered or corrupted packages
-- ✅ Enables security scanning and audit tools
-- ✅ Ensures reproducible builds
-- ✅ Complies with npm security best practices
-
-## Reason
-EOF
+          cat >> fix-summary.md << EOF
+          
+          ## What This Fixes
+          - ✅ Ensures packages are verified against their checksums
+          - ✅ Prevents tampered or corrupted packages
+          - ✅ Enables security scanning and audit tools
+          - ✅ Ensures reproducible builds
+          - ✅ Complies with npm security best practices
+          
+          ## Reason
+          EOF
           echo "$REASON" >> fix-summary.md
-          cat >> fix-summary.md << 'EOF'
-
-## Next Steps
-1. Review the integrity hash changes
-2. Merge to enable proper dependency verification
-3. All future installs will verify package integrity
-
----
-*Generated automatically by fix-lockfile-integrity workflow*
-EOF
+          cat >> fix-summary.md << EOF
+          
+          ## Next Steps
+          1. Review the integrity hash changes
+          2. Merge to enable proper dependency verification
+          3. All future installs will verify package integrity
+          
+          ---
+          *Generated automatically by fix-lockfile-integrity workflow*
+          EOF
           
       - name: Create Pull Request
         # Only create PR when manually dispatched, not on automatic push events
