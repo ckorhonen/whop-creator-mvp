@@ -2,54 +2,23 @@ name: Regenerate Complete Lockfile
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - '.github/workflows/regenerate-complete-lockfile.yml'
+    inputs:
+      debug:
+        description: 'Enable debug output'
+        required: false
+        default: 'false'
 
-# Default permissions: read-only (safe for all events)
+# Default permissions: read-only for manual triggers
 permissions:
   contents: read
-  pull-requests: read
 
 jobs:
-  # Job 1: Validation only - runs on PR events
-  validate-lockfile:
-    name: Validate Lockfile (PR Check)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    
-    steps:
-      - name: Debug workflow context
-        run: |
-          echo "🔍 Workflow Context:"
-          echo "  Event: ${{ github.event_name }}"
-          echo "  Actor: ${{ github.actor }}"
-          echo "  Repository: ${{ github.repository }}"
-          echo "  Ref: ${{ github.ref }}"
-          echo "  SHA: ${{ github.sha }}"
-          echo ""
-          echo "✅ Running validation only (PR event - read-only)"
-      
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
-      - name: Check workflow file syntax
-        run: |
-          echo "✅ Workflow file validation passed"
-          echo "ℹ️  To regenerate the lockfile, manually trigger this workflow"
-
-  # Job 2: Full regeneration - runs on workflow_dispatch
+  # Single job: Full regeneration - runs on workflow_dispatch only
   regenerate-and-commit:
     name: Regenerate and Commit Lockfile
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
     
-    # Grant write permissions only for this job when manually triggered
+    # Grant write permissions for this job when manually triggered
     permissions:
       contents: write
     
