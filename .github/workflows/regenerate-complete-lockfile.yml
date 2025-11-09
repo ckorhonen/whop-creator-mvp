@@ -1,0 +1,110 @@
+name: Regenerate Complete Lockfile
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix-complete-lockfile
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    name: Generate Complete package-lock.json
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: fix-complete-lockfile
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Remove incomplete lockfile if exists
+        run: |
+          echo "🧹 Removing incomplete lockfile..."
+          rm -f package-lock.json
+          rm -rf node_modules
+          npm cache clean --force
+          
+      - name: Generate complete package-lock.json
+        run: |
+          echo "🔨 Generating complete package-lock.json with all dependencies..."
+          npm install
+          
+          if [ ! -f "package-lock.json" ]; then
+            echo "❌ Failed to generate package-lock.json"
+            exit 1
+          fi
+          
+          # Count packages
+          PACKAGE_COUNT=$(node -e "const lock = require('./package-lock.json'); console.log(Object.keys(lock.packages || {}).length)")
+          echo "✅ Generated lockfile with ${PACKAGE_COUNT} packages"
+          
+      - name: Verify lockfile completeness
+        run: |
+          echo "🔍 Verifying lockfile completeness..."
+          
+          # Check that we have a substantial number of packages (should be 500+)
+          PACKAGE_COUNT=$(node -e "const lock = require('./package-lock.json'); console.log(Object.keys(lock.packages || {}).length)")
+          
+          if [ "$PACKAGE_COUNT" -lt 100 ]; then
+            echo "❌ Lockfile appears incomplete (only $PACKAGE_COUNT packages)"
+            exit 1
+          fi
+          
+          echo "✅ Lockfile contains $PACKAGE_COUNT packages - looks complete!"
+          
+          # Verify some key packages exist
+          node -e "
+            const lock = require('./package-lock.json');
+            const required = [
+              'node_modules/vite',
+              'node_modules/@vitejs/plugin-react', 
+              'node_modules/@babel/core',
+              'node_modules/eslint',
+              'node_modules/typescript',
+              'node_modules/react',
+              'node_modules/react-dom'
+            ];
+            
+            const missing = required.filter(pkg => !lock.packages[pkg]);
+            
+            if (missing.length > 0) {
+              console.error('❌ Missing required packages:', missing);
+              process.exit(1);
+            }
+            
+            console.log('✅ All key packages present in lockfile');
+          "
+          
+      - name: Test installation
+        run: |
+          echo "🧪 Testing clean installation..."
+          rm -rf node_modules
+          npm ci
+          echo "✅ npm ci successful with generated lockfile"
+          
+      - name: Commit complete lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          if git diff --quiet package-lock.json; then
+            echo "ℹ️  No changes to lockfile"
+          else
+            git add package-lock.json
+            git commit -m "Generate complete package-lock.json with all dependencies
+
+- Generated complete lockfile with all transitive dependencies
+- Includes valid SHA-512 integrity hashes for all packages
+- Verified installation with npm ci
+- Fixes incomplete dependency tracking"
+            git push
+            echo "✅ Complete lockfile committed and pushed"
+          fi
