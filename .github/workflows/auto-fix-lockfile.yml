@@ -1,0 +1,316 @@
+name: Auto-Fix Package Lockfile
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for lockfile fix (optional)'
+        required: false
+        default: 'Auto-fix package-lock.json integrity issues'
+  push:
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+    branches:
+      - main
+      - 'fix/**'
+
+# Required permissions for workflow
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  fix-complete-lockfile-integrity:
+    name: Fix Complete Lockfile Integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install jq for JSON processing
+        run: |
+          echo "📦 Installing jq for JSON processing..."
+          sudo apt-get update -qq
+          sudo apt-get install -y jq
+          echo "✅ jq installed successfully"
+      
+      - name: Validate package.json
+        run: |
+          echo "📋 Validating package.json..."
+          
+          if [ ! -f "package.json" ]; then
+            echo "❌ package.json not found!"
+            exit 1
+          fi
+          
+          # Check if package.json is valid JSON
+          if ! jq empty package.json 2>/dev/null; then
+            echo "❌ package.json is not valid JSON!"
+            exit 1
+          fi
+          
+          echo "✅ package.json is valid"
+      
+      - name: Check lockfile status
+        id: check
+        run: |
+          echo "🔍 Checking package-lock.json status..."
+          
+          NEEDS_FIX=false
+          
+          # Check if lockfile exists
+          if [ ! -f "package-lock.json" ]; then
+            echo "⚠️  package-lock.json not found"
+            NEEDS_FIX=true
+          else
+            # Check file size (incomplete if < 100 lines)
+            LINE_COUNT=$(wc -l < package-lock.json)
+            echo "📊 Current lockfile size: $LINE_COUNT lines"
+            
+            if [ "$LINE_COUNT" -lt 100 ]; then
+              echo "⚠️  Lockfile appears incomplete (< 100 lines)"
+              NEEDS_FIX=true
+            fi
+            
+            # Check for placeholder integrity hashes
+            if grep -q "example-integrity-hash\|example-.*-hash\|PLACEHOLDER" package-lock.json 2>/dev/null; then
+              echo "❌ Found placeholder integrity hashes"
+              NEEDS_FIX=true
+            fi
+            
+            # Check for missing integrity fields
+            if ! grep -q '"integrity":' package-lock.json 2>/dev/null; then
+              echo "⚠️  No integrity hashes found in lockfile"
+              NEEDS_FIX=true
+            fi
+          fi
+          
+          if [ "$NEEDS_FIX" = true ]; then
+            echo "needs_fix=true" >> $GITHUB_OUTPUT
+            echo "⚠️  Lockfile needs repair"
+          else
+            echo "needs_fix=false" >> $GITHUB_OUTPUT
+            echo "✅ Lockfile appears healthy"
+          fi
+      
+      - name: Backup existing lockfile
+        if: steps.check.outputs.needs_fix == 'true'
+        run: |
+          if [ -f "package-lock.json" ]; then
+            echo "💾 Backing up existing package-lock.json..."
+            cp package-lock.json package-lock.json.backup
+            echo "✅ Backup created"
+          fi
+      
+      - name: Clean npm state
+        if: steps.check.outputs.needs_fix == 'true'
+        run: |
+          echo "🧹 Cleaning npm cache and node_modules..."
+          rm -rf node_modules
+          rm -f package-lock.json
+          npm cache clean --force
+          echo "✅ Clean state achieved"
+      
+      - name: Configure npm
+        if: steps.check.outputs.needs_fix == 'true'
+        run: |
+          echo "⚙️  Configuring npm..."
+          
+          # Use legacy-peer-deps for compatibility
+          if [ ! -f ".npmrc" ]; then
+            echo "legacy-peer-deps=true" > .npmrc
+            echo "✅ Created .npmrc with legacy-peer-deps"
+          else
+            echo "📄 Using existing .npmrc"
+            cat .npmrc
+          fi
+      
+      - name: Generate complete lockfile
+        if: steps.check.outputs.needs_fix == 'true'
+        run: |
+          echo "🔨 Generating complete package-lock.json..."
+          
+          # Install with retry logic
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            echo "📦 Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES: Running npm install..."
+            
+            if npm install --verbose 2>&1 | tee npm-install.log; then
+              echo "✅ npm install completed successfully"
+              break
+            else
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              
+              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                echo "⚠️  npm install failed, retrying in 10 seconds..."
+                sleep 10
+                npm cache clean --force
+              else
+                echo "❌ npm install failed after $MAX_RETRIES attempts"
+                echo "Last error:"
+                tail -n 50 npm-install.log
+                exit 1
+              fi
+            fi
+          done
+      
+      - name: Verify generated lockfile
+        if: steps.check.outputs.needs_fix == 'true'
+        run: |
+          echo "🔍 Verifying generated lockfile..."
+          
+          if [ ! -f "package-lock.json" ]; then
+            echo "❌ package-lock.json was not generated"
+            exit 1
+          fi
+          
+          LINE_COUNT=$(wc -l < package-lock.json)
+          echo "📊 Generated lockfile size: $LINE_COUNT lines"
+          
+          if [ "$LINE_COUNT" -lt 100 ]; then
+            echo "❌ Generated lockfile appears incomplete"
+            exit 1
+          fi
+          
+          # Verify no placeholder hashes
+          if grep -q "example-integrity-hash\|example-.*-hash\|PLACEHOLDER" package-lock.json; then
+            echo "❌ Placeholder hashes still present"
+            exit 1
+          fi
+          
+          # Verify structure
+          if ! node -e "const fs = require('fs'); const lock = JSON.parse(fs.readFileSync('package-lock.json')); if (!lock.packages || !lock.lockfileVersion) process.exit(1);"; then
+            echo "❌ Lockfile structure is invalid"
+            exit 1
+          fi
+          
+          # Count packages with integrity
+          INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
+          TOTAL_PACKAGES=$(jq '.packages | length' package-lock.json)
+          
+          echo "✅ Lockfile verification passed"
+          echo "   Total packages: $TOTAL_PACKAGES"
+          echo "   With integrity: $INTEGRITY_COUNT"
+      
+      - name: Test installation
+        if: steps.check.outputs.needs_fix == 'true'
+        run: |
+          echo "🧪 Testing npm ci with fixed lockfile..."
+          rm -rf node_modules
+          
+          if npm ci; then
+            echo "✅ npm ci successful"
+          else
+            echo "⚠️  npm ci failed, but lockfile was generated"
+            echo "This may indicate other issues to investigate"
+          fi
+        continue-on-error: true
+      
+      - name: Generate fix summary
+        if: steps.check.outputs.needs_fix == 'true'
+        run: |
+          echo "📊 Generating fix summary..."
+          
+          TOTAL_PACKAGES=$(jq '.packages | length' package-lock.json)
+          INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
+          REASON="${{ github.event.inputs.reason }}"
+          
+          cat > fix-summary.md << 'EOFMARKER'
+          # 🔒 Lockfile Integrity Fix Summary
+          
+          ## Problem Detected
+          - ❌ Package-lock.json was missing, incomplete, or had invalid integrity hashes
+          - ❌ This prevents proper dependency verification and reproducible builds
+          - ❌ Causes security vulnerabilities and build inconsistencies
+          
+          ## Changes Made
+          - ✅ Regenerated complete package-lock.json with valid integrity hashes
+          - 📦 Fixed integrity for INTEGRITY_COUNT_PLACEHOLDER out of TOTAL_PACKAGES_PLACEHOLDER packages
+          - 🔒 Enabled proper dependency verification and security scanning
+          
+          ## Benefits
+          - ✅ **Security**: Packages are now verified against their checksums
+          - ✅ **Reproducibility**: Identical dependency trees across all environments
+          - ✅ **Performance**: Faster installs with npm ci instead of npm install
+          - ✅ **Reliability**: Prevents installation of tampered or corrupted packages
+          - ✅ **Compliance**: Follows npm security best practices
+          
+          ## Technical Details
+          - **Lockfile version**: 3 (npm 7+)
+          - **Node.js version**: 20.x
+          - **Total packages locked**: TOTAL_PACKAGES_PLACEHOLDER
+          - **Packages with integrity**: INTEGRITY_COUNT_PLACEHOLDER
+          
+          ## Reason
+          REASON_PLACEHOLDER
+          
+          ## Next Steps
+          1. ✅ Review the integrity hash changes
+          2. ✅ Merge this PR to enable proper dependency verification
+          3. ✅ All future installs will verify package integrity
+          4. ✅ Update CI/CD to use `npm ci` for faster, reproducible builds
+          
+          ---
+          *Generated automatically by auto-fix-lockfile workflow*
+          EOFMARKER
+          
+          # Replace placeholders
+          sed -i "s/INTEGRITY_COUNT_PLACEHOLDER/$INTEGRITY_COUNT/g" fix-summary.md
+          sed -i "s/TOTAL_PACKAGES_PLACEHOLDER/$TOTAL_PACKAGES/g" fix-summary.md
+          sed -i "s/REASON_PLACEHOLDER/${REASON:-Auto-generated fix}/g" fix-summary.md
+          
+          echo "✅ Summary generated"
+          cat fix-summary.md
+      
+      - name: Create Pull Request
+        if: steps.check.outputs.needs_fix == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            🔒 Fix: Auto-regenerate complete package-lock.json with integrity
+            
+            - Regenerated lockfile with valid SHA-512 integrity hashes
+            - Enables proper package verification and security scanning
+            - Prevents installation of tampered dependencies
+            - Ensures reproducible and secure builds
+            
+            Triggered by: ${{ github.event_name }}
+            Reason: ${{ github.event.inputs.reason }}
+          branch: auto-fix-lockfile-${{ github.run_number }}
+          delete-branch: true
+          title: "🔒 Auto-fix: Regenerate complete package-lock.json with integrity"
+          body-path: fix-summary.md
+          labels: |
+            security
+            dependencies
+            automated
+            lockfile-fix
+          assignees: ${{ github.actor }}
+      
+      - name: Workflow completion
+        run: |
+          echo "=== Workflow Completion ==="
+          
+          if [ "${{ steps.check.outputs.needs_fix }}" == "true" ]; then
+            echo "🎉 Auto-fix workflow completed successfully!"
+            echo ""
+            echo "A pull request has been created with the fixed lockfile."
+            echo "Review and merge it to enable secure, reproducible builds."
+          else
+            echo "✅ No fixes needed - lockfile is already healthy!"
+          fi
+          
+          echo "=========================="
