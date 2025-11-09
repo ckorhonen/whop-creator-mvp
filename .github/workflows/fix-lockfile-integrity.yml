@@ -11,10 +11,12 @@ on:
     paths:
       - 'package.json'
 
-# Use minimal permissions by default
-# Write permissions only granted when needed (workflow_dispatch)
+# Required permissions for create-pull-request action
+# These are needed for workflow_dispatch events
+# For push events, the workflow runs but doesn't create PRs (controlled by step conditions)
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
   actions: read
 
 jobs:
@@ -22,13 +24,6 @@ jobs:
     name: Fix Package Lockfile Integrity
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    
-    # Grant write permissions only for workflow_dispatch
-    # For push events, this job runs in read-only mode (validation only)
-    permissions:
-      contents: ${{ github.event_name == 'workflow_dispatch' && 'write' || 'read' }}
-      pull-requests: ${{ github.event_name == 'workflow_dispatch' && 'write' || 'read' }}
-      actions: read
     
     steps:
       - name: Debug - Check permissions
@@ -222,7 +217,9 @@ EOF
             echo "  2. Click 'Run workflow'"
             echo "  3. This will create a PR with the fixes"
             echo ""
-            cat fix-summary.md
+            if [ -f "fix-summary.md" ]; then
+              cat fix-summary.md
+            fi
             exit 1
           else
             echo "✅ VALIDATION PASSED: Lockfile integrity is healthy!"
