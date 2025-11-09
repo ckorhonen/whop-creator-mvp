@@ -164,7 +164,7 @@ a complete dependency tree with proper integrity verification."
           echo "  With integrity: $INTEGRITY_COUNT"
           echo ""
           
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "✅ The complete package-lock.json has been committed to this branch"
             echo "✅ All future workflow runs will have proper dependencies"
             echo "✅ npm ci will work correctly with the complete lockfile"
