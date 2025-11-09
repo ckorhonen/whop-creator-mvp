@@ -1,0 +1,13 @@
+name = "whop-creator-mvp"
+compatibility_date = "2025-11-08"
+pages_build_output_dir = "dist"
+
+[env.production]
+route = { pattern = "*", zone_name = "" }
+
+[[env.production.routes]]
+pattern = "*"
+
+# Environment variables (set via Cloudflare dashboard)
+# WHOP_API_KEY
+# WHOP_APP_ID
