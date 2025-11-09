@@ -97,14 +97,13 @@ jobs:
           # Stage changes
           git add package-lock.json
           
-          # Commit changes
-          git commit -m "fix: Regenerate complete package-lock.json with all dependencies
-
-- Removed incomplete lockfile
-- Regenerated with complete dependency trees
-- Now includes all transitive dependencies
-- Verified with npm ci
-- Fixes workflow run #19203458503"
+          # Commit changes with proper formatting
+          git commit -m "fix: Regenerate complete package-lock.json with all dependencies" \
+            -m "- Removed incomplete lockfile" \
+            -m "- Regenerated with complete dependency trees" \
+            -m "- Now includes all transitive dependencies" \
+            -m "- Verified with npm ci" \
+            -m "- Workflow run: ${{ github.run_id }}"
           
           # Push changes directly
           echo "🚀 Pushing changes..."
