@@ -10,9 +10,6 @@ on:
   push:
     paths:
       - 'package.json'
-  pull_request:
-    paths:
-      - 'package-lock.json'
 
 # Required permissions for create-pull-request action
 permissions:
