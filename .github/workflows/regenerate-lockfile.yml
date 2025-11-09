@@ -20,43 +20,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-          ref: ${{ github.ref }}
+          fetch-depth: 1
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
       
-      - name: Debug git state
+      - name: Configure Git
         run: |
-          echo "=== Git Debug Info ==="
-          echo "Current branch: $(git rev-parse --abbrev-ref HEAD)"
-          echo "Current commit: $(git rev-parse HEAD)"
-          echo "Remote URL: $(git remote get-url origin)"
-          echo "Git status:"
-          git status
-          echo "Branches:"
-          git branch -a
-      
-      - name: Setup git for push
-        run: |
-          echo "=== Setting up git for push ==="
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          
-          # Get the branch name from GITHUB_REF
-          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
-          echo "Branch from GITHUB_REF: $BRANCH_NAME"
-          
-          # Ensure we're on the right branch (handle detached HEAD)
-          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-          if [ "$CURRENT_BRANCH" = "HEAD" ]; then
-            echo "Detached HEAD detected, checking out $BRANCH_NAME"
-            git checkout -B "$BRANCH_NAME"
-          fi
-          
-          echo "Final branch: $(git rev-parse --abbrev-ref HEAD)"
+          echo "✅ Git configured"
       
       - name: Remove incomplete lockfile
         run: |
@@ -129,8 +104,7 @@ jobs:
       
       - name: Commit and push changes
         run: |
-          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
-          echo "Committing to branch: $BRANCH_NAME"
+          echo "=== Committing Changes ==="
           
           git add package-lock.json
           
@@ -148,10 +122,10 @@ Changes:
 - Proper integrity hashes for all packages (no placeholders)
 - Verified lockfile format
 
-This resolves workflow run #19202984206 failure.
-Fixes npm install warnings and enables proper dependency caching."
+Fixes workflow failures and enables proper dependency caching."
           
-          echo "Pushing to origin/$BRANCH_NAME..."
-          git push origin "$BRANCH_NAME"
+          echo "=== Pushing Changes ==="
+          echo "Pushing to branch: ${{ github.ref_name }}"
+          git push
           
-          echo "✅ Changes committed and pushed"
+          echo "✅ Changes committed and pushed to ${{ github.ref_name }}"
