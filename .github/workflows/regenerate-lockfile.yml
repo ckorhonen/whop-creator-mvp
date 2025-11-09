@@ -6,7 +6,7 @@ on:
       force:
         description: 'Force regeneration even if lockfile exists'
         required: false
-        default: true
+        default: 'true'
         type: boolean
 
 permissions:
@@ -137,11 +137,11 @@ jobs:
       
       - name: Commit and push changes
         shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH_NAME: ${{ github.ref_name }}
         run: |
           echo "=== Committing Changes ==="
+          
+          # Get the current branch name - use multiple methods for reliability
+          BRANCH_NAME="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
           echo "Current branch: $BRANCH_NAME"
           
           git add package-lock.json
