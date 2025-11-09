@@ -8,7 +8,7 @@ on:
         required: false
         type: string
         default: ''
-  workflow_call:
+  workflow_call: {}
 
 permissions:
   contents: write
