@@ -35,6 +35,7 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
           ref: ${{ github.ref }}
+          persist-credentials: true
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -196,9 +197,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "=== Committing Changes ==="
-          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
-          echo "Current branch: $BRANCH_NAME"
           
+          # Get branch name more reliably
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BRANCH_NAME="${{ github.head_ref }}"
+          else
+            BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+          fi
+          
+          echo "Current branch: $BRANCH_NAME"
+          echo "Current commit: $(git rev-parse HEAD)"
+          
+          # Check for changes
           git add package-lock.json
           
           if git diff --staged --quiet; then
@@ -207,8 +217,10 @@ jobs:
           fi
           
           # Show what changed
+          echo ""
           echo "Files to be committed:"
           git diff --staged --stat
+          echo ""
           
           # Commit with [skip ci] to prevent triggering other workflows
           git commit -m "🔧 Regenerate complete package-lock.json [skip ci]
@@ -221,44 +233,45 @@ Changes:
 - Verified lockfile format with npm ci
 - Generated from clean state with npm cache cleared
 
-Fixes workflow failures and enables proper dependency caching."
+Fixes workflow failures and enables proper dependency caching.
+
+Triggered by: ${{ github.event_name }}
+Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           
           echo "=== Pushing Changes ==="
           
-          # Pull latest changes first to avoid conflicts
-          git pull --rebase origin "$BRANCH_NAME" || {
-            echo "⚠️  Pull failed, but continuing with push..."
-          }
+          # Try to push directly
+          if git push origin "HEAD:$BRANCH_NAME" 2>&1; then
+            echo "✅ Changes successfully pushed to $BRANCH_NAME"
+            exit 0
+          fi
           
-          # Push with retry logic
-          MAX_RETRIES=3
-          RETRY_COUNT=0
+          # If direct push failed, try with force-with-lease (safer than force)
+          echo "⚠️  Direct push failed. Trying with --force-with-lease..."
           
-          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            echo "Push attempt $((RETRY_COUNT + 1)) of $MAX_RETRIES"
-            
-            if git push origin "HEAD:$BRANCH_NAME" 2>&1; then
-              echo "✅ Changes successfully pushed to $BRANCH_NAME"
-              exit 0
-            else
-              PUSH_EXIT_CODE=$?
-              RETRY_COUNT=$((RETRY_COUNT + 1))
-              echo "⚠️  Push attempt $RETRY_COUNT failed with exit code $PUSH_EXIT_CODE"
-              
-              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-                echo "Retrying in 5 seconds..."
-                sleep 5
-                git pull --rebase origin "$BRANCH_NAME" || true
-              fi
-            fi
-          done
+          if git push --force-with-lease origin "HEAD:$BRANCH_NAME" 2>&1; then
+            echo "✅ Changes successfully force-pushed to $BRANCH_NAME"
+            exit 0
+          fi
           
-          echo "❌ Failed to push after $MAX_RETRIES attempts"
-          echo "This might be due to:"
+          # If both pushes failed, provide helpful error message
+          echo "❌ Failed to push changes"
+          echo ""
+          echo "Possible reasons:"
           echo "  1. Branch protection rules preventing bot pushes"
           echo "  2. Insufficient workflow permissions"
-          echo "  3. Network connectivity issues"
+          echo "  3. Someone else pushed to the branch"
           echo ""
-          echo "To fix, check repository Settings > Actions > General > Workflow permissions"
-          echo "Ensure 'Read and write permissions' is selected"
+          echo "Current git status:"
+          git status
+          echo ""
+          echo "Recent commits on remote:"
+          git fetch origin "$BRANCH_NAME" || true
+          git log "origin/$BRANCH_NAME" -n 3 --oneline || true
+          echo ""
+          echo "To fix manually:"
+          echo "  1. Check Settings > Actions > General > Workflow permissions"
+          echo "  2. Ensure 'Read and write permissions' is selected"
+          echo "  3. If branch is protected, add 'github-actions[bot]' to allowed actors"
+          echo "  4. Or manually run: npm install && git add package-lock.json && git commit && git push"
           exit 1
