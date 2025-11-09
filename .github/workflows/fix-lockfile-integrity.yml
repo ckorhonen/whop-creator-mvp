@@ -192,10 +192,7 @@ jobs:
           delete-branch: true
           title: "🔒 Fix: Regenerate package-lock.json with correct integrity hashes"
           body: ${{ steps.summary.outputs.summary }}
-          labels: |
-            security
-            dependencies
-            automated
+          labels: security,dependencies,automated
           assignees: ${{ github.actor }}
           
       - name: Workflow completion
