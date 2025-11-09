@@ -30,8 +30,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.branch || github.ref }}
-          fetch-depth: 0
+          ref: ${{ inputs.branch || github.head_ref || github.ref }}
+          # Use PAT if available for better permissions, otherwise use GITHUB_TOKEN
+          token: ${{ secrets.PAT || secrets.GITHUB_TOKEN }}
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -127,9 +128,9 @@ jobs:
           echo "✅ npm ci successful!"
       
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v5
+        uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT || secrets.GITHUB_TOKEN }}
           commit-message: |
             🔒 Regenerate complete package-lock.json with all dependencies
             
@@ -171,7 +172,6 @@ jobs:
             3. Builds will be reproducible across all environments
             
             ---
-            **Generated**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
             **Workflow Run**: ${{ github.run_id }}
             **Triggered by**: ${{ github.actor }}
           branch: regenerate-lockfile-${{ github.run_id }}
