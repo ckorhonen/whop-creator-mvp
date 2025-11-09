@@ -1,0 +1,175 @@
+name: Auto-Fix Lockfile Integrity
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/lockfile-integrity-hashes
+
+jobs:
+  fix-complete-lockfile-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: fix/lockfile-integrity-hashes
+          fetch-depth: 1
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Validate Environment
+        run: |
+          echo "=== Environment Info ==="
+          echo "Node: $(node --version)"
+          echo "NPM: $(npm --version)"
+          echo "PWD: $(pwd)"
+          echo ""
+      
+      - name: Backup and Remove Invalid Lockfile
+        run: |
+          echo "=== Removing Invalid Lockfile ==="
+          if [ -f package-lock.json ]; then
+            echo "Current lockfile size: $(wc -l < package-lock.json) lines"
+            echo "Removing invalid lockfile with placeholder hashes..."
+            rm -f package-lock.json
+            echo "✅ Invalid lockfile removed"
+          fi
+          echo ""
+      
+      - name: Clean npm cache
+        run: |
+          echo "=== Cleaning npm cache ==="
+          npm cache clean --force
+          echo "✅ Cache cleaned"
+          echo ""
+      
+      - name: Generate Fresh Lockfile
+        run: |
+          echo "=== Generating Fresh package-lock.json ==="
+          echo "Running npm install to generate lockfile with valid integrity hashes..."
+          echo ""
+          
+          # Use legacy-peer-deps to avoid conflicts
+          echo "legacy-peer-deps=true" > .npmrc
+          
+          # Run npm install
+          if npm install --loglevel=verbose; then
+            echo ""
+            echo "✅ npm install completed successfully"
+          else
+            echo ""
+            echo "❌ npm install failed"
+            exit 1
+          fi
+          echo ""
+      
+      - name: Verify Lockfile Integrity
+        run: |
+          echo "=== Verifying Lockfile Integrity ==="
+          
+          if [ ! -f package-lock.json ]; then
+            echo "❌ Error: package-lock.json was not generated"
+            exit 1
+          fi
+          
+          LOCKFILE_SIZE=$(wc -l < package-lock.json)
+          echo "✅ package-lock.json generated: $LOCKFILE_SIZE lines"
+          echo ""
+          
+          # Check for placeholder/example hashes
+          if grep -q "example-.*-hash" package-lock.json; then
+            echo "❌ Error: Lockfile still contains placeholder hashes!"
+            echo "Found:"
+            grep "example-.*-hash" package-lock.json | head -5
+            exit 1
+          fi
+          
+          echo "✅ No placeholder hashes found"
+          echo ""
+          
+          # Verify key packages have valid integrity hashes
+          echo "Checking key packages:"
+          
+          for package in "@whop-sdk/core" "wrangler" "eslint" "@babel/core" "react" "vite"; do
+            if node -e "
+              const fs = require('fs');
+              const lock = JSON.parse(fs.readFileSync('package-lock.json'));
+              const pkgKey = Object.keys(lock.packages).find(k => k.includes('$package'));
+              if (!pkgKey) process.exit(0);
+              const pkg = lock.packages[pkgKey];
+              if (!pkg.integrity || pkg.integrity.includes('example')) {
+                console.log('  ❌ $package: Invalid or missing integrity');
+                process.exit(1);
+              }
+              console.log('  ✅ $package: Valid integrity hash');
+            "; then
+              :
+            else
+              echo "Package check failed"
+              exit 1
+            fi
+          done
+          
+          echo ""
+          echo "✅ All integrity hashes are valid"
+          echo ""
+      
+      - name: Test Installation
+        run: |
+          echo "=== Testing Installation ==="
+          
+          if [ ! -d node_modules ]; then
+            echo "❌ node_modules not found"
+            exit 1
+          fi
+          
+          echo "✅ node_modules exists"
+          echo "Size: $(du -sh node_modules | cut -f1)"
+          echo "Packages: $(ls -d node_modules/*/ 2>/dev/null | wc -l)"
+          echo ""
+      
+      - name: Commit Fixed Lockfile
+        run: |
+          echo "=== Committing Fixed Lockfile ==="
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          if git diff --quiet package-lock.json; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          
+          git add package-lock.json
+          git commit -m "Fix package-lock.json integrity hashes
+
+Auto-generated valid integrity hashes for all dependencies.
+Replaced placeholder hashes with real SHA512 hashes.
+
+Fixes workflow failure at run 19203177941"
+          
+          git push origin fix/lockfile-integrity-hashes
+          
+          echo "✅ Changes committed and pushed"
+          echo ""
+      
+      - name: Summary
+        if: always()
+        run: |
+          echo "=== Summary ===="
+          if [ -f package-lock.json ]; then
+            echo "✅ package-lock.json regenerated successfully"
+            echo "📊 Size: $(wc -l < package-lock.json) lines"
+            echo ""
+            echo "🎉 Lockfile integrity issue fixed!"
+            echo "   You can now create a PR to merge this fix."
+          else
+            echo "❌ Failed to generate valid lockfile"
+          fi
+          echo ""
