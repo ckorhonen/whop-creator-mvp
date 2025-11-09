@@ -7,18 +7,22 @@ on:
         description: 'Enable debug output'
         required: false
         default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
-# Default permissions: read-only for manual triggers
+# Workflow-level permissions (default for all jobs)
 permissions:
-  contents: read
+  contents: write  # Changed to write to allow push access
 
 jobs:
-  # Single job: Full regeneration - runs on workflow_dispatch only
   regenerate-and-commit:
     name: Regenerate and Commit Lockfile
     runs-on: ubuntu-latest
     
-    # Grant write permissions for this job when manually triggered
+    # Job inherits workflow-level permissions
+    # Explicitly stated for clarity
     permissions:
       contents: write
     
