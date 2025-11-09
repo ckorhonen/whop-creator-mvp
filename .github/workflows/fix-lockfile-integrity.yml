@@ -19,6 +19,7 @@ permissions:
   contents: write
   pull-requests: write
   actions: read
+  metadata: read  # Required for workflow to access repository metadata
 
 jobs:
   fix-integrity:
