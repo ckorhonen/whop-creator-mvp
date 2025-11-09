@@ -2,6 +2,13 @@ name: Regenerate Complete Lockfile
 
 on:
   workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to run on (leave empty for current branch)'
+        required: false
+        type: string
+        default: ''
+  workflow_call:
 
 permissions:
   contents: write
@@ -16,7 +23,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref || github.ref }}
+          ref: ${{ inputs.branch || github.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Setup Node.js
