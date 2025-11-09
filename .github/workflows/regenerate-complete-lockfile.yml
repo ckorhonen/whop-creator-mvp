@@ -17,11 +17,21 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
+          persist-credentials: true
+          ref: ${{ github.ref }}
           
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          
+      - name: Configure Git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          echo "✅ Git configured"
+          echo "Current branch: $(git branch --show-current)"
+          echo "Current ref: ${{ github.ref }}"
           
       - name: Clean existing lockfile and cache
         run: |
@@ -73,11 +83,8 @@ jobs:
           npm ci
           echo "✅ npm ci successful - lockfile is valid!"
           
-      - name: Commit regenerated lockfile
+      - name: Commit and push regenerated lockfile
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          
           # Check if there are changes
           if git diff --quiet package-lock.json; then
             echo "✅ No changes to package-lock.json"
@@ -97,23 +104,18 @@ jobs:
 - Regenerated with complete dependency trees
 - Now includes all transitive dependencies
 - Verified with npm ci
-- Fixes workflow run #19203441475"
+- Fixes workflow run #19203458503"
           
-          # Pull latest changes to avoid conflicts
-          echo "🔄 Pulling latest changes..."
-          git pull --rebase origin fix-complete-lockfile-regeneration-copilot || true
-          
-          # Push changes with explicit branch reference
+          # Push changes directly
           echo "🚀 Pushing changes..."
-          if git push origin HEAD:fix-complete-lockfile-regeneration-copilot; then
+          if git push origin HEAD; then
             echo "✅ Successfully committed and pushed regenerated lockfile"
           else
             echo "❌ Failed to push changes"
             echo "Debug information:"
             echo "Current branch: $(git branch --show-current)"
             echo "Current ref: ${{ github.ref }}"
-            echo "Remote URL: $(git remote get-url origin)"
-            echo "Git status:"
-            git status
+            echo "Git log:"
+            git log -1
             exit 1
           fi
