@@ -189,11 +189,42 @@ jobs:
       - name: Deploy to Cloudflare Pages
         if: steps.check_secrets.outputs.secrets_configured == 'true'
         id: deploy
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=whop-creator-mvp
+        run: |
+          echo "=== Deploying to Cloudflare Pages ==="
+          
+          # Install wrangler if not available
+          if ! command -v wrangler &> /dev/null; then
+            echo "Installing wrangler globally..."
+            npm install -g wrangler
+          fi
+          
+          echo "Wrangler version: $(wrangler --version)"
+          
+          # Set up Cloudflare authentication
+          export CLOUDFLARE_API_TOKEN="${{ secrets.CLOUDFLARE_API_TOKEN }}"
+          export CLOUDFLARE_ACCOUNT_ID="${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
+          
+          # Deploy to Cloudflare Pages
+          echo "Deploying dist directory to Cloudflare Pages..."
+          wrangler pages deploy dist \
+            --project-name=whop-creator-mvp \
+            --branch=main \
+            --commit-hash="${{ github.sha }}" \
+            --commit-message="${{ github.event.head_commit.message }}" || {
+            echo "❌ Deployment failed!"
+            echo "Troubleshooting steps:"
+            echo "1. Verify CLOUDFLARE_API_TOKEN has 'Cloudflare Pages:Edit' permissions"
+            echo "2. Verify CLOUDFLARE_ACCOUNT_ID is correct"
+            echo "3. Ensure the project 'whop-creator-mvp' exists in your Cloudflare account"
+            echo "4. Check if you have the correct permissions for the project"
+            exit 1
+          }
+          
+          echo "✅ Successfully deployed to Cloudflare Pages!"
+          echo "=============================="
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         timeout-minutes: 5
       
       - name: Deployment Success
