@@ -21,64 +21,150 @@ jobs:
       
       - name: Validate Environment
         run: |
+          echo "🔍 Validating environment..."
           echo "Node version: $(node --version)"
           echo "NPM version: $(npm --version)"
-          echo "Checking for package.json..."
+          echo "Working directory: $(pwd)"
+          echo ""
+          echo "📋 Checking for required files..."
           if [ ! -f package.json ]; then
             echo "❌ Error: package.json not found"
             exit 1
           fi
           echo "✅ package.json found"
           
+          if [ -f package-lock.json ]; then
+            echo "✅ package-lock.json found"
+          else
+            echo "⚠️  Warning: package-lock.json not found"
+            echo "   Consider running 'npm install' locally and committing the lock file"
+          fi
+      
       - name: Check GitHub Secrets
         run: |
+          echo "🔐 Validating GitHub Secrets..."
+          SECRETS_OK=true
+          
           if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
-            echo "❌ Error: CLOUDFLARE_API_TOKEN secret is not set"
-            echo "Please add it in Settings → Secrets and variables → Actions"
-            echo "Get your token from: https://dash.cloudflare.com/profile/api-tokens"
-            exit 1
+            echo "❌ CLOUDFLARE_API_TOKEN secret is missing"
+            echo "   → Go to: Settings → Secrets and variables → Actions"
+            echo "   → Get token from: https://dash.cloudflare.com/profile/api-tokens"
+            SECRETS_OK=false
+          else
+            echo "✅ CLOUDFLARE_API_TOKEN is configured"
           fi
+          
           if [ -z "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]; then
-            echo "❌ Error: CLOUDFLARE_ACCOUNT_ID secret is not set"
-            echo "Please add it in Settings → Secrets and variables → Actions"
-            echo "Find your Account ID in the Cloudflare dashboard"
+            echo "❌ CLOUDFLARE_ACCOUNT_ID secret is missing"
+            echo "   → Go to: Settings → Secrets and variables → Actions"
+            echo "   → Find in Cloudflare dashboard URL or sidebar"
+            SECRETS_OK=false
+          else
+            echo "✅ CLOUDFLARE_ACCOUNT_ID is configured"
+          fi
+          
+          if [ "$SECRETS_OK" = false ]; then
+            echo ""
+            echo "⚠️  Deployment will fail without these secrets!"
             exit 1
           fi
           echo "✅ All required secrets are configured"
       
       - name: Install dependencies
         run: |
-          echo "Installing dependencies..."
+          echo "📦 Installing dependencies..."
           if [ -f package-lock.json ]; then
-            echo "Using package-lock.json with npm ci"
+            echo "Using npm ci (faster, requires lock file)"
             npm ci
           else
-            echo "⚠️  Warning: package-lock.json not found, using npm install"
-            echo "Consider running 'npm install' locally and committing package-lock.json"
+            echo "Using npm install (no lock file found)"
             npm install
           fi
+          echo "✅ Dependencies installed successfully"
       
-      - name: Build
+      - name: Build project
         run: |
-          echo "Building project..."
+          echo "🔨 Building project..."
+          echo "Running: npm run build"
           npm run build
-          echo "Build completed"
+          echo "✅ Build completed successfully"
       
-      - name: Verify Build Output
+      - name: Verify build output
         run: |
-          echo "Verifying build output..."
+          echo "🔍 Verifying build output..."
           if [ ! -d "dist" ]; then
-            echo "❌ Error: dist directory not found after build"
-            echo "Build may have failed. Check the Build step logs above."
+            echo "❌ Error: dist directory not found after build!"
+            echo "   The build step may have failed silently."
+            echo "   Check the 'Build project' step logs above for errors."
             exit 1
           fi
-          echo "✅ dist directory exists"
-          echo "Contents of dist directory:"
-          ls -la dist/
+          
+          if [ ! "$(ls -A dist)" ]; then
+            echo "❌ Error: dist directory is empty!"
+            exit 1
+          fi
+          
+          echo "✅ dist directory exists and contains files:"
+          ls -lah dist/ | head -20
+          
+          FILE_COUNT=$(find dist -type f | wc -l)
+          DIR_SIZE=$(du -sh dist | cut -f1)
+          echo ""
+          echo "📊 Build statistics:"
+          echo "   Files: $FILE_COUNT"
+          echo "   Size: $DIR_SIZE"
       
       - name: Deploy to Cloudflare Pages
+        id: deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist --project-name=whop-creator-mvp
+      
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "🎉 =================================="
+          echo "🎉  DEPLOYMENT SUCCESSFUL!"
+          echo "🎉 =================================="
+          echo ""
+          echo "🌐 Your application is now live!"
+          echo ""
+          echo "📍 URLs:"
+          echo "   Production: https://whop-creator-mvp.pages.dev"
+          echo "   Dashboard: https://dash.cloudflare.com/"
+          echo ""
+          echo "✨ Next steps:"
+          echo "   1. Visit your site to verify deployment"
+          echo "   2. Check Cloudflare dashboard for analytics"
+          echo "   3. Configure custom domains if needed"
+      
+      - name: Deployment failure help
+        if: failure()
+        run: |
+          echo "❌ =================================="
+          echo "❌  DEPLOYMENT FAILED"
+          echo "❌ =================================="
+          echo ""
+          echo "🔍 Common issues and solutions:"
+          echo ""
+          echo "1. Missing Secrets:"
+          echo "   → Check Settings → Secrets and variables → Actions"
+          echo "   → Ensure CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are set"
+          echo ""
+          echo "2. Project doesn't exist:"
+          echo "   → Go to https://dash.cloudflare.com/"
+          echo "   → Navigate to Workers & Pages"
+          echo "   → Create project named: whop-creator-mvp"
+          echo ""
+          echo "3. Invalid API token:"
+          echo "   → Token may be expired or have wrong permissions"
+          echo "   → Needs 'Edit Cloudflare Pages' permission"
+          echo "   → Regenerate at: https://dash.cloudflare.com/profile/api-tokens"
+          echo ""
+          echo "4. Build failures:"
+          echo "   → Check the 'Build project' step logs above"
+          echo "   → Look for TypeScript or dependency errors"
+          echo ""
+          echo "📚 See DEPLOYMENT_TROUBLESHOOTING.md for detailed guide"
