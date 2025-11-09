@@ -1,5 +1,8 @@
 name: Fix Lockfile Integrity
 
+# This workflow automatically detects and fixes package-lock.json integrity issues
+# Triggered: Manual workflow_dispatch or when package files change
+
 on:
   workflow_dispatch:
     inputs:
