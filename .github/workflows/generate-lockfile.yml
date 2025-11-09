@@ -1,7 +1,10 @@
-name: Generate package-lock.json
+name: Generate Complete package-lock.json
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix-complete-lockfile-generation
 
 jobs:
   generate-lockfile:
@@ -14,25 +17,105 @@ jobs:
         with:
           node-version: '20'
       
-      - name: Generate package-lock.json
+      - name: Remove old incomplete lockfile
         run: |
-          echo "Generating package-lock.json..."
-          npm install --package-lock-only
-          echo "✅ package-lock.json generated"
+          if [ -f package-lock.json ]; then
+            echo "Removing incomplete package-lock.json..."
+            rm package-lock.json
+          fi
+      
+      - name: Generate complete package-lock.json
+        run: |
+          echo "Generating complete package-lock.json with full dependency tree..."
+          echo "This will download and resolve all dependencies including:"
+          echo "- React and React-DOM"
+          echo "- TypeScript and ESLint tooling"
+          echo "- Vite build system"
+          echo "- Wrangler (with 100+ dependencies)"
+          echo "- All transitive dependencies"
+          echo ""
+          
+          # Use npm install to generate complete lockfile with integrity hashes
+          npm install
+          
+          echo ""
+          echo "✅ Complete package-lock.json generated!"
+          echo ""
+          echo "Lockfile statistics:"
+          echo "- Total lines: $(wc -l < package-lock.json)"
+          echo "- File size: $(du -h package-lock.json | cut -f1)"
+          echo ""
+          echo "Sample of resolved packages:"
+          npm list --depth=0
+      
+      - name: Verify lockfile completeness
+        run: |
+          LOCKFILE_SIZE=$(wc -l < package-lock.json)
+          echo "Lockfile size: $LOCKFILE_SIZE lines"
+          
+          if [ "$LOCKFILE_SIZE" -lt 100 ]; then
+            echo "❌ Error: Lockfile appears incomplete (< 100 lines)"
+            echo "A complete lockfile with all dependencies should have hundreds of lines"
+            exit 1
+          fi
+          
+          echo "✅ Lockfile appears complete ($LOCKFILE_SIZE lines)"
+          
+          # Check for integrity hashes
+          if ! grep -q "integrity" package-lock.json; then
+            echo "❌ Error: No integrity hashes found in lockfile"
+            exit 1
+          fi
+          
+          echo "✅ Integrity hashes present"
       
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5
         with:
-          commit-message: 'Add package-lock.json for reproducible builds'
-          title: 'Add package-lock.json'
+          commit-message: 'Generate complete package-lock.json with full dependency tree'
+          title: 'Fix: Generate complete package-lock.json for reproducible builds'
           body: |
-            ## Add package-lock.json
+            ## 🔧 Fix: Complete package-lock.json Generated
             
-            This PR adds the missing `package-lock.json` file to enable:
-            - 🚀 Faster CI/CD builds with npm caching
-            - 🔒 Reproducible builds across environments
-            - ✅ Locked dependency versions
+            This PR replaces the incomplete package-lock.json with a complete version that includes:
             
-            Generated with `npm install --package-lock-only` using Node.js 20.
-          branch: add-package-lock-file
-          delete-branch: true
+            ✅ **Full dependency resolution tree** for all dependencies and devDependencies
+            ✅ **SHA512 integrity hashes** for all packages  
+            ✅ **Complete node_modules structure** with all transitive dependencies
+            ✅ **Lockfile format v3** with proper package resolution
+            
+            ### What This Enables
+            
+            🚀 **Fast builds**: npm ci is 2-3x faster than npm install  
+            🔒 **Reproducible builds**: Same dependencies across all environments  
+            ✅ **Integrity verification**: Cryptographic verification of all packages  
+            📦 **Locked versions**: No unexpected version changes
+            
+            ### Technical Details
+            
+            Generated using `npm install` in a clean Node.js 20 environment.
+            
+            Includes complete dependency trees for:
+            - React 18.3.1 and React-DOM  
+            - @whop-sdk/core 0.2.0
+            - TypeScript 5.5.3+ and @typescript-eslint packages
+            - ESLint 8.57.0 with react-hooks and react-refresh plugins
+            - Vite 5.3.1+ with @vitejs/plugin-react
+            - Wrangler 3.60.0+ with all Cloudflare dependencies
+            - @types/react and @types/react-dom
+            - All transitive dependencies (hundreds of packages)
+            
+            ### Fixes
+            
+            - Workflow run #19202609686 ❌ (incomplete lockfile)
+            - Enables npm ci instead of npm install in CI/CD
+            - Resolves dependency installation issues
+            
+            ---
+            
+            **Generated by**: GitHub Actions workflow  
+            **Verification**: Lockfile completeness checked automatically
+          branch: fix-complete-lockfile-generation
+          delete-branch: false
+          add-paths: |
+            package-lock.json
