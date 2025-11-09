@@ -153,6 +153,8 @@ jobs:
       
       - name: Commit and push changes
         if: (steps.analyze.outputs.status != 'valid' || github.event.inputs.force == 'true') && steps.check_changes.outputs.has_changes == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "=== Committing Changes ===="
           
@@ -177,38 +179,45 @@ This enables proper dependency verification and caching in CI/CD."
           
           echo ""
           echo "=== Pushing to GitHub ===="
-          echo "📍 Pushing to branch: $(git branch --show-current)"
-          echo "📍 Remote URL: $(git remote get-url origin)"
           
           # Get current branch
           CURRENT_BRANCH=$(git branch --show-current)
+          echo "📍 Branch: $CURRENT_BRANCH"
           
-          # Attempt to push with better error handling
-          # Use force-with-lease to be safer with concurrent changes
-          if git push origin "$CURRENT_BRANCH" --force-with-lease; then
-            echo "✅ Successfully pushed changes!"
-          else
-            EXIT_CODE=$?
-            echo "❌ ERROR: Failed to push changes (exit code: $EXIT_CODE)"
-            echo ""
-            echo "=== Diagnostic Information ==="
-            echo "Git status:"
-            git status
-            echo ""
-            echo "Git log (last commit):"
-            git log -1 --oneline
-            echo ""
-            echo "Remote branches:"
-            git branch -r
-            echo ""
-            echo "Attempting simple push without force-with-lease..."
-            if git push origin "$CURRENT_BRANCH"; then
-              echo "✅ Simple push succeeded!"
-            else
-              echo "❌ Simple push also failed"
-              exit 1
-            fi
+          # Configure git remote to use token authentication
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          echo "✅ Remote URL configured with token"
+          
+          # Attempt to push with force-with-lease first (safer)
+          echo "Attempting push with --force-with-lease..."
+          if git push origin "HEAD:${CURRENT_BRANCH}" --force-with-lease; then
+            echo "✅ Successfully pushed changes with force-with-lease!"
+            exit 0
           fi
+          
+          # Fallback to simple push
+          echo "⚠️  force-with-lease failed, trying simple push..."
+          if git push origin "HEAD:${CURRENT_BRANCH}"; then
+            echo "✅ Successfully pushed changes with simple push!"
+            exit 0
+          fi
+          
+          # If both fail, show diagnostics
+          echo "❌ ERROR: Both push attempts failed"
+          echo ""
+          echo "=== Diagnostic Information ==="
+          echo "Repository: ${GITHUB_REPOSITORY}"
+          echo "Branch: ${CURRENT_BRANCH}"
+          echo ""
+          echo "Git status:"
+          git status
+          echo ""
+          echo "Git log (last commit):"
+          git log -1
+          echo ""
+          echo "Remote branches:"
+          git branch -r
+          exit 1
       
       - name: Summary
         if: always()
