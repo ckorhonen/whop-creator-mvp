@@ -1,0 +1,78 @@
+name: Fix Lockfile (Automated)
+
+on:
+  push:
+    branches:
+      - fix/regenerate-lockfile-automated
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate-lockfile:
+    name: Regenerate Complete Lockfile
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: fix/regenerate-lockfile-automated
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Remove incomplete lockfile and node_modules
+        run: |
+          echo "🗑️ Removing incomplete package-lock.json and node_modules..."
+          rm -f package-lock.json
+          rm -rf node_modules
+      
+      - name: Clear npm cache
+        run: |
+          echo "🧹 Cleaning npm cache..."
+          npm cache clean --force
+      
+      - name: Regenerate complete lockfile
+        run: |
+          echo "🔨 Generating complete package-lock.json..."
+          npm install --package-lock-only
+          
+          # Verify the lockfile was created
+          if [ ! -f "package-lock.json" ]; then
+            echo "❌ Failed to generate package-lock.json"
+            exit 1
+          fi
+          
+          PACKAGES=$(jq '.packages | length' package-lock.json)
+          echo "✅ Generated lockfile with $PACKAGES packages"
+      
+      - name: Install dependencies and verify
+        run: |
+          echo "🧪 Testing npm ci with generated lockfile..."
+          npm ci
+          echo "✅ npm ci successful!"
+      
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add package-lock.json
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "🔒 Regenerate complete package-lock.json
+
+- Generated complete lockfile with all dependencies
+- Includes all transitive dependencies with integrity hashes
+- Verified with npm ci
+- Fixes workflow run #19203591404"
+            
+            git push
+            echo "✅ Changes committed and pushed"
+          fi
