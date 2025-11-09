@@ -2,9 +2,6 @@ name: Regenerate Complete Package Lock
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - fix-complete-lockfile-regeneration-copilot
 
 permissions:
   contents: write
@@ -86,11 +83,11 @@ jobs:
             git add package-lock.json
             git commit -m "fix: Regenerate complete package-lock.json with all dependencies
 
-- Removed incomplete lockfile (only ~30 packages)
+- Removed incomplete lockfile (only ~60 packages)
 - Regenerated with complete dependency trees
 - Now includes all transitive dependencies
 - Verified with npm ci
-- Fixes workflow run #19203385113"
+- Fixes workflow run #19203428384"
             git push
             echo "✅ Committed and pushed regenerated lockfile"
           fi
