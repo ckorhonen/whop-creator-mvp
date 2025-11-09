@@ -1,6 +1,9 @@
 name: Regenerate Complete Lockfile
 
 on:
+  push:
+    branches:
+      - 'fix/regenerate-lockfile-workflow-trigger'
   workflow_dispatch:
     inputs:
       branch:
