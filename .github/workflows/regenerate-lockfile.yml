@@ -23,12 +23,12 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-          ref: fix-complete-lockfile-integrity
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
       
       - name: Configure Git
         shell: bash
@@ -36,6 +36,15 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           echo "✅ Git configured"
+      
+      - name: Check npm registry connectivity
+        shell: bash
+        run: |
+          echo "=== Checking npm registry connectivity ==="
+          npm config set registry https://registry.npmjs.org/
+          npm ping || echo "⚠️  npm registry ping failed, but continuing..."
+          echo "npm version: $(npm --version)"
+          echo "node version: $(node --version)"
       
       - name: Remove incomplete lockfile
         shell: bash
@@ -56,6 +65,10 @@ jobs:
           else
             echo "No existing lockfile found"
           fi
+          
+          # Also clean npm cache to ensure fresh download
+          echo "Cleaning npm cache..."
+          npm cache clean --force || true
       
       - name: Generate complete package-lock.json
         shell: bash
@@ -63,8 +76,21 @@ jobs:
           echo "=== Generating Complete Lockfile ==="
           echo "This will download and verify all dependencies..."
           
+          # Set npm config for better reliability
+          npm config set fetch-retries 5
+          npm config set fetch-retry-mintimeout 20000
+          npm config set fetch-retry-maxtimeout 120000
+          
           # Use npm install to generate a complete lockfile
-          npm install --package-lock-only
+          echo "Running: npm install --package-lock-only"
+          if ! npm install --package-lock-only; then
+            echo "❌ npm install failed. Showing npm debug info:"
+            npm config list
+            echo ""
+            echo "Package.json content:"
+            cat package.json
+            exit 1
+          fi
           
           if [ -f package-lock.json ]; then
             LOCKFILE_LINES=$(wc -l < package-lock.json)
@@ -111,6 +137,8 @@ jobs:
       
       - name: Commit and push changes
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "=== Committing Changes ==="
           
@@ -120,6 +148,10 @@ jobs:
             echo "ℹ️  No changes to commit - lockfile already up to date"
             exit 0
           fi
+          
+          # Show what changed
+          echo "Files to be committed:"
+          git diff --staged --stat
           
           # Commit with [skip ci] to prevent triggering other workflows
           git commit -m "🔧 Regenerate complete package-lock.json [skip ci]
@@ -145,12 +177,15 @@ Fixes workflow failures and enables proper dependency caching."
           RETRY_COUNT=0
           
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            if git push origin HEAD:fix-complete-lockfile-integrity; then
+            echo "Push attempt $((RETRY_COUNT + 1)) of $MAX_RETRIES"
+            
+            if git push origin HEAD:fix-complete-lockfile-integrity 2>&1; then
               echo "✅ Changes successfully pushed to fix-complete-lockfile-integrity"
               exit 0
             else
+              PUSH_EXIT_CODE=$?
               RETRY_COUNT=$((RETRY_COUNT + 1))
-              echo "⚠️  Push attempt $RETRY_COUNT failed"
+              echo "⚠️  Push attempt $RETRY_COUNT failed with exit code $PUSH_EXIT_CODE"
               
               if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
                 echo "Retrying in 5 seconds..."
@@ -161,4 +196,11 @@ Fixes workflow failures and enables proper dependency caching."
           done
           
           echo "❌ Failed to push after $MAX_RETRIES attempts"
+          echo "This might be due to:"
+          echo "  1. Branch protection rules preventing bot pushes"
+          echo "  2. Insufficient workflow permissions"
+          echo "  3. Network connectivity issues"
+          echo ""
+          echo "To fix, check repository Settings > Actions > General > Workflow permissions"
+          echo "Ensure 'Read and write permissions' is selected"
           exit 1
