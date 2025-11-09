@@ -34,7 +34,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          # Disable npm caching temporarily due to incomplete package-lock.json
+          # Will re-enable after generating complete lockfile
+          # cache: 'npm'
         timeout-minutes: 2
       
       - name: Validate Environment
@@ -52,9 +54,13 @@ jobs:
           fi
           echo "✅ package.json found"
           if [ -f package-lock.json ]; then
-            echo "✅ package-lock.json found"
+            echo "⚠️  Warning: package-lock.json found but may be incomplete"
             LOCKFILE_SIZE=$(wc -l < package-lock.json)
             echo "   Lockfile size: $LOCKFILE_SIZE lines"
+            if [ "$LOCKFILE_SIZE" -lt 1000 ]; then
+              echo "   ⚠️  Lockfile appears incomplete (should be 20,000+ lines for full dependencies)"
+              echo "   Using npm install instead of npm ci"
+            fi
           else
             echo "⚠️  Warning: package-lock.json not found"
           fi
@@ -98,27 +104,37 @@ jobs:
         run: |
           echo "=== Installing Dependencies ==="
           
-          if [ -f package-lock.json ]; then
-            LOCKFILE_SIZE=$(wc -l < package-lock.json)
-            if [ "$LOCKFILE_SIZE" -gt 100 ]; then
-              echo "✅ Found complete package-lock.json ($LOCKFILE_SIZE lines)"
-              echo "Using npm ci for fast, reproducible installation"
-              npm ci
-              echo "✅ Dependencies installed successfully with npm ci"
-            else
-              echo "⚠️  Warning: package-lock.json appears incomplete ($LOCKFILE_SIZE lines)"
-              echo "Using npm install instead"
-              npm install
-              echo "✅ Dependencies installed successfully with npm install"
-            fi
+          # Always use npm install until we have a complete lockfile
+          # This is slower but more reliable with incomplete package-lock.json
+          echo "⚠️  Using npm install (no caching available due to incomplete lockfile)"
+          echo "This will take 60-90 seconds..."
+          
+          # Set npm to use more aggressive timeouts and retries
+          npm config set fetch-retry-mintimeout 20000
+          npm config set fetch-retry-maxtimeout 120000
+          npm config set fetch-retries 3
+          
+          # Run npm install with verbose output for debugging
+          if npm install --verbose 2>&1 | tee install.log; then
+            echo "✅ Dependencies installed successfully"
+            echo ""
+            echo "Installed packages:"
+            npm list --depth=0 || true
           else
-            echo "⚠️  Warning: package-lock.json not found"
-            echo "Using npm install (slower and less reproducible)"
-            npm install
-            echo "✅ Dependencies installed successfully with npm install"
+            echo ""
+            echo "❌ npm install failed!"
+            echo ""
+            echo "🔍 Error details:"
+            tail -n 100 install.log
+            echo ""
+            echo "💡 Common causes:"
+            echo "1. Network timeout (npm registry slow/unavailable)"
+            echo "2. Incomplete package-lock.json (missing dependency resolution)"
+            echo "3. Platform-specific build failures"
+            exit 1
           fi
           echo "=============================="
-        timeout-minutes: 5
+        timeout-minutes: 8
       
       - name: Type Check
         continue-on-error: true
@@ -215,4 +231,9 @@ jobs:
           echo "=== Workflow Completion Summary ==="
           echo "Workflow completed at: $(date)"
           echo "Status: ${{ job.status }}"
+          echo ""
+          echo "⚠️  Next Steps to Improve Performance:"
+          echo "1. Generate complete package-lock.json by running 'npm install' locally"
+          echo "2. Commit the complete lockfile to enable npm caching"
+          echo "3. This will reduce build time from 60-90s to 20-30s"
           echo "=============================="
