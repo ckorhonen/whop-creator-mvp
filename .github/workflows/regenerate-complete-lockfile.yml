@@ -8,7 +8,13 @@ on:
         required: false
         type: string
         default: ''
-  workflow_call: {}
+  workflow_call:
+    inputs:
+      branch:
+        description: 'Branch to run on (leave empty for current branch)'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: write
