@@ -20,18 +20,57 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
+          ref: ${{ github.ref }}
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
       
+      - name: Debug git state
+        run: |
+          echo "=== Git Debug Info ==="
+          echo "Current branch: $(git rev-parse --abbrev-ref HEAD)"
+          echo "Current commit: $(git rev-parse HEAD)"
+          echo "Remote URL: $(git remote get-url origin)"
+          echo "Git status:"
+          git status
+          echo "Branches:"
+          git branch -a
+      
+      - name: Setup git for push
+        run: |
+          echo "=== Setting up git for push ==="
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          # Get the branch name from GITHUB_REF
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+          echo "Branch from GITHUB_REF: $BRANCH_NAME"
+          
+          # Ensure we're on the right branch (handle detached HEAD)
+          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          if [ "$CURRENT_BRANCH" = "HEAD" ]; then
+            echo "Detached HEAD detected, checking out $BRANCH_NAME"
+            git checkout -B "$BRANCH_NAME"
+          fi
+          
+          echo "Final branch: $(git rev-parse --abbrev-ref HEAD)"
+      
       - name: Remove incomplete lockfile
         run: |
           echo "=== Removing incomplete lockfile ==="
           if [ -f package-lock.json ]; then
             echo "Found existing package-lock.json"
+            
+            # Check for placeholder hashes
+            if grep -q "example-integrity-hash\|example-.*-hash" package-lock.json; then
+              echo "⚠️  Found placeholder integrity hashes - lockfile is invalid"
+              PLACEHOLDER_COUNT=$(grep -c "example-.*-hash" package-lock.json || echo "0")
+              echo "Found $PLACEHOLDER_COUNT placeholder hashes"
+            fi
+            
             rm package-lock.json
             echo "✅ Removed incomplete lockfile"
           else
@@ -50,11 +89,20 @@ jobs:
             LOCKFILE_LINES=$(wc -l < package-lock.json)
             echo "✅ Generated package-lock.json with $LOCKFILE_LINES lines"
             
-            # Verify it has proper integrity hashes
+            # Verify it has proper integrity hashes (not placeholders)
+            if grep -q "example-integrity-hash\|example-.*-hash" package-lock.json; then
+              echo "❌ ERROR: Generated lockfile still contains placeholder hashes!"
+              echo "This should not happen. Showing problematic entries:"
+              grep -n "example-.*-hash" package-lock.json | head -10
+              exit 1
+            fi
+            
+            # Verify it has real integrity hashes
             if grep -q '"integrity": "sha' package-lock.json; then
-              echo "✅ Lockfile contains proper integrity hashes"
+              INTEGRITY_COUNT=$(grep -c '"integrity": "sha' package-lock.json || echo "0")
+              echo "✅ Lockfile contains $INTEGRITY_COUNT proper integrity hashes"
             else
-              echo "⚠️  Warning: Lockfile may be incomplete"
+              echo "⚠️  Warning: No integrity hashes found"
             fi
           else
             echo "❌ Failed to generate lockfile"
@@ -81,12 +129,8 @@ jobs:
       
       - name: Commit and push changes
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          
-          # Get current branch name
-          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-          echo "Current branch: $CURRENT_BRANCH"
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+          echo "Committing to branch: $BRANCH_NAME"
           
           git add package-lock.json
           
@@ -101,12 +145,13 @@ This fixes the incomplete lockfile that was causing deployment issues.
 
 Changes:
 - Complete dependency resolution with all transitive dependencies
-- Proper integrity hashes for all packages
+- Proper integrity hashes for all packages (no placeholders)
 - Verified lockfile format
 
-This resolves workflow run #19202965307 failure.
+This resolves workflow run #19202984206 failure.
 Fixes npm install warnings and enables proper dependency caching."
           
-          git push origin "$CURRENT_BRANCH"
+          echo "Pushing to origin/$BRANCH_NAME..."
+          git push origin "$BRANCH_NAME"
           
           echo "✅ Changes committed and pushed"
