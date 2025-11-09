@@ -133,7 +133,7 @@ jobs:
           echo "=== Lockfile Statistics ===="
           echo "📊 Total lines: $(wc -l < package-lock.json)"
           echo "📦 Packages with integrity: $REAL_HASHES"
-          echo "📦 Packages with resolved: $(grep -c '\"resolved\":' package-lock.json 2>/dev/null || echo '0')"
+          echo "📦 Packages with resolved: $(grep -c '"resolved":' package-lock.json 2>/dev/null || echo '0')"
           echo "💾 File size: $(du -h package-lock.json | cut -f1)"
       
       - name: Commit and push changes
@@ -151,7 +151,7 @@ jobs:
           
           PLACEHOLDER_COUNT="${{ steps.analyze.outputs.placeholder_count }}"
           PLACEHOLDER_COUNT="${PLACEHOLDER_COUNT:-0}"
-          RESOLVED_COUNT=$(grep -c '\"resolved\":' package-lock.json 2>/dev/null || echo '0')
+          RESOLVED_COUNT=$(grep -c '"resolved":' package-lock.json 2>/dev/null || echo '0')
           
           git commit -m "🔧 Regenerate package-lock.json with real integrity hashes
 
@@ -169,16 +169,25 @@ This enables proper dependency verification and caching in CI/CD."
           echo ""
           echo "=== Pushing to GitHub ===="
           
-          # Attempt to push with better error handling
-          if git push; then
+          # Get current branch
+          BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          echo "Pushing to branch: $BRANCH"
+          
+          # Attempt to push with explicit branch specification
+          if git push origin HEAD:$BRANCH; then
             echo "✅ Successfully pushed changes!"
           else
-            echo "❌ ERROR: Failed to push changes"
-            echo "Checking git status:"
+            EXIT_CODE=$?
+            echo "❌ ERROR: Failed to push changes (exit code: $EXIT_CODE)"
+            echo ""
+            echo "Git status:"
             git status
             echo ""
-            echo "Checking remote:"
+            echo "Git remote:"
             git remote -v
+            echo ""
+            echo "Recent commits:"
+            git log --oneline -5
             exit 1
           fi
       
@@ -193,7 +202,8 @@ This enables proper dependency verification and caching in CI/CD."
           echo "Status: ${{ steps.analyze.outputs.status }}"
           
           if [ -f package-lock.json ]; then
-            REAL_HASHES=$(grep -c '\"integrity\": \"sha' package-lock.json 2>/dev/null || echo "0")
+            # Fixed grep pattern - removed escaped quotes for proper matching
+            REAL_HASHES=$(grep -c '"integrity": "sha' package-lock.json 2>/dev/null || echo "0")
             PLACEHOLDERS=$(grep -c "example-.*-hash" package-lock.json 2>/dev/null || echo "0")
             
             if [ "$PLACEHOLDERS" -eq "0" ] && [ "$REAL_HASHES" -gt "0" ]; then
