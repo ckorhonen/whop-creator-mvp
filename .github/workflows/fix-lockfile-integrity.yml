@@ -147,9 +147,9 @@ jobs:
           
           PACKAGE_COUNT=$(jq '.packages | length' package-lock.json)
           INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
-          REASON="${{ github.event.inputs.reason }}"
+          REASON="${{ github.event.inputs.reason || 'Fix package-lock.json integrity hashes' }}"
           
-          cat > fix-summary.md << EOF
+          cat > fix-summary.md << 'ENDOFSUMMARY'
           # Lockfile Integrity Fix Summary
           
           ## Problem Detected
@@ -159,7 +159,7 @@ jobs:
           
           ## Changes Made
           - ✅ Regenerated package-lock.json with valid integrity hashes
-          - 📦 Fixed integrity for ${INTEGRITY_COUNT} out of ${PACKAGE_COUNT} packages
+          - 📦 Fixed integrity for INTEGRITY_COUNT_PLACEHOLDER out of PACKAGE_COUNT_PLACEHOLDER packages
           - 🔒 Enabled proper dependency verification
           
           ## What This Fixes
@@ -170,7 +170,7 @@ jobs:
           - ✅ Complies with npm security best practices
           
           ## Reason
-          ${REASON}
+          REASON_PLACEHOLDER
           
           ## Next Steps
           1. Review the integrity hash changes
@@ -179,7 +179,12 @@ jobs:
           
           ---
           *Generated automatically by fix-lockfile-integrity workflow*
-          EOF
+          ENDOFSUMMARY
+          
+          # Replace placeholders with actual values
+          sed -i "s/PACKAGE_COUNT_PLACEHOLDER/${PACKAGE_COUNT}/g" fix-summary.md
+          sed -i "s/INTEGRITY_COUNT_PLACEHOLDER/${INTEGRITY_COUNT}/g" fix-summary.md
+          sed -i "s/REASON_PLACEHOLDER/${REASON}/g" fix-summary.md
           
       - name: Create Pull Request
         if: steps.check.outputs.has_issues == 'true'
@@ -187,7 +192,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: |
-            Fix: Regenerate package-lock.json with correct integrity hashes
+            fix: Regenerate package-lock.json with correct integrity hashes
             
             Fixed placeholder integrity hashes in package-lock.json:
             - Regenerated lockfile with valid SHA-512 integrity hashes
@@ -195,7 +200,7 @@ jobs:
             - Prevents installation of tampered dependencies
             - Ensures reproducible and secure builds
             
-            Reason: ${{ github.event.inputs.reason }}
+            Reason: ${{ github.event.inputs.reason || 'Fix package-lock.json integrity hashes' }}
           branch: fix-lockfile-integrity-${{ github.run_number }}
           delete-branch: true
           title: "🔒 Fix: Regenerate package-lock.json with correct integrity hashes"
