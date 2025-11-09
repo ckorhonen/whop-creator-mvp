@@ -65,13 +65,34 @@ jobs:
       - name: Install dependencies
         run: |
           echo "Installing dependencies..."
+          
+          # Check if package-lock.json exists and is complete
+          USE_NPM_CI=false
           if [ -f package-lock.json ]; then
-            echo "Using package-lock.json with npm ci"
+            # Check if the lockfile has actual package data (more than just metadata)
+            # Complete lockfiles have hundreds of lines; incomplete ones have < 30
+            LOCKFILE_SIZE=$(wc -l < package-lock.json)
+            if [ "$LOCKFILE_SIZE" -gt 30 ]; then
+              echo "✅ Found complete package-lock.json ($LOCKFILE_SIZE lines)"
+              echo "Using npm ci for fast, reproducible installation"
+              USE_NPM_CI=true
+            else
+              echo "⚠️  Warning: package-lock.json exists but appears incomplete ($LOCKFILE_SIZE lines)"
+              echo "An incomplete lockfile will cause npm ci to fail"
+              echo "Using npm install instead"
+            fi
+          else
+            echo "⚠️  Warning: package-lock.json not found"
+            echo "Using npm install (slower and less reproducible)"
+          fi
+          
+          if [ "$USE_NPM_CI" = true ]; then
             npm ci
           else
-            echo "⚠️  Warning: package-lock.json not found, using npm install"
-            echo "Consider running 'npm install' locally and committing package-lock.json"
             npm install
+            echo ""
+            echo "💡 To speed up future builds:"
+            echo "   Run 'npm install' locally and commit the complete package-lock.json"
           fi
       
       - name: Type Check
