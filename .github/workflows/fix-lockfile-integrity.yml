@@ -147,10 +147,7 @@ jobs:
           
           PACKAGE_COUNT=$(jq '.packages | length' package-lock.json)
           INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
-          REASON="${{ github.event.inputs.reason }}"
-          if [ -z "$REASON" ]; then
-            REASON="Fix package-lock.json integrity hashes"
-          fi
+          REASON="${{ github.event.inputs.reason || 'Automated fix triggered by package.json change' }}"
           
           cat > fix-summary.md <<EOF
 # Lockfile Integrity Fix Summary
@@ -198,7 +195,7 @@ EOF
             - Prevents installation of tampered dependencies
             - Ensures reproducible and secure builds
             
-            Reason: ${{ github.event.inputs.reason || 'Fix package-lock.json integrity hashes' }}
+            Reason: ${{ github.event.inputs.reason || 'Automated fix triggered by package.json change' }}
           branch: fix-lockfile-integrity-${{ github.run_number }}
           delete-branch: true
           title: "🔒 Fix: Regenerate package-lock.json with correct integrity hashes"
