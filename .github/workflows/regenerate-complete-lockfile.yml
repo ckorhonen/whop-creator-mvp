@@ -12,55 +12,41 @@ on:
           - 'true'
           - 'false'
 
-# Workflow-level permissions - explicit and comprehensive
+# Workflow-level permissions
 permissions:
   contents: write      # Allow pushing commits
-  actions: read        # Allow reading workflow status
-  pull-requests: write # Allow PR operations if needed
-  statuses: write      # Allow status updates
+  pull-requests: write # Allow PR operations
 
 jobs:
   regenerate-and-commit:
     name: Regenerate and Commit Lockfile
     runs-on: ubuntu-latest
     
-    # Job permissions must match workflow-level to avoid override issues
+    # Job permissions
     permissions:
       contents: write
-      actions: read
       pull-requests: write
-      statuses: write
     
     steps:
       - name: Debug workflow context
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          ACTOR: ${{ github.actor }}
-          REPOSITORY: ${{ github.repository }}
-          REF: ${{ github.ref }}
-          REF_NAME: ${{ github.ref_name }}
-          SHA: ${{ github.sha }}
-          RUN_ID: ${{ github.run_id }}
+        if: inputs.debug == 'true'
         run: |
           echo "🔍 Workflow Context:"
-          echo "  Event: $EVENT_NAME"
-          echo "  Actor: $ACTOR"
-          echo "  Repository: $REPOSITORY"
-          echo "  Ref: $REF"
-          echo "  Ref Name: $REF_NAME"
-          echo "  SHA: $SHA"
-          echo "  Run ID: $RUN_ID"
+          echo "  Event: ${{ github.event_name }}"
+          echo "  Actor: ${{ github.actor }}"
+          echo "  Repository: ${{ github.repository }}"
+          echo "  Ref: ${{ github.ref }}"
+          echo "  Ref Name: ${{ github.ref_name }}"
+          echo "  SHA: ${{ github.sha }}"
+          echo "  Run ID: ${{ github.run_id }}"
           echo ""
-          echo "🔐 Permissions: WRITE (workflow_dispatch)"
-          echo "✅ Will commit changes after generation"
+          echo "🔐 Using create-pull-request action for reliable git operations"
       
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          persist-credentials: true
-          fetch-depth: 0  # Fetch complete history for proper git operations
-          ref: ${{ github.ref_name }}  # Explicitly checkout the current branch
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -149,103 +135,58 @@ jobs:
           npm ci
           echo "✅ npm ci successful!"
       
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-      
-      - name: Check for changes
-        id: check_changes
-        run: |
-          # Check if there are any changes to commit
-          git add package-lock.json .npmrc
-          
-          if git diff --cached --quiet; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "ℹ️  No changes to commit - lockfile is already up to date"
-          else
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-            echo "✅ Changes detected in lockfile"
-          fi
-      
-      - name: Commit and push complete lockfile
-        if: steps.check_changes.outputs.has_changes == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH_NAME: ${{ github.ref_name }}
-          REPO_NAME: ${{ github.repository }}
-        run: |
-          # Create commit with properly formatted multi-line message
-          git commit -m "🔒 Regenerate complete package-lock.json with all dependencies" \
-                     -m "" \
-                     -m "- Generated complete lockfile with 500+ packages" \
-                     -m "- Includes all transitive dependencies" \
-                     -m "- All packages have valid SHA-512 integrity hashes" \
-                     -m "- Fixes incomplete lockfile causing workflow failures" \
-                     -m "" \
-                     -m "This fixes the auto-fix-lockfile workflow failures by providing" \
-                     -m "a complete dependency tree with proper integrity verification."
-          
-          # Set up authentication
-          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO_NAME}.git"
-          
-          # Push with retry logic
-          MAX_RETRIES=3
-          RETRY_COUNT=0
-          
-          echo "📤 Pushing changes to ${BRANCH_NAME}..."
-          
-          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            if git push origin "HEAD:refs/heads/${BRANCH_NAME}"; then
-              echo "✅ Complete lockfile committed and pushed!"
-              exit 0
-            else
-              RETRY_COUNT=$((RETRY_COUNT + 1))
-              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-                echo "⚠️  Push failed, retrying ($RETRY_COUNT/$MAX_RETRIES)..."
-                sleep 2
-                # Pull any changes before retrying
-                git pull --rebase origin "${BRANCH_NAME}" || true
-              else
-                echo "❌ Push failed after $MAX_RETRIES attempts. Diagnostics:"
-                echo ""
-                echo "Current branch: ${BRANCH_NAME}"
-                echo "Git status:"
-                git status
-                echo ""
-                echo "Remote info:"
-                git remote -v
-                echo ""
-                echo "Recent commits:"
-                git log --oneline -3
-                echo ""
-                echo "Possible causes:"
-                echo "  - Branch protection rules require reviews"
-                echo "  - Token lacks sufficient permissions"
-                echo "  - Remote branch has conflicting changes"
-                exit 1
-              fi
-            fi
-          done
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            🔒 Regenerate complete package-lock.json with all dependencies
+            
+            - Generated complete lockfile with 500+ packages
+            - Includes all transitive dependencies
+            - All packages have valid SHA-512 integrity hashes
+            - Fixes incomplete lockfile causing workflow failures
+            
+            This fixes the auto-fix-lockfile workflow failures by providing
+            a complete dependency tree with proper integrity verification.
+          branch: regenerate-lockfile-${{ github.run_number }}
+          delete-branch: true
+          title: "🔒 Regenerate complete package-lock.json"
+          body: |
+            ## 🔒 Lockfile Regeneration
+            
+            This PR regenerates the complete `package-lock.json` with all dependencies and proper integrity hashes.
+            
+            ### Changes
+            - ✅ Generated complete lockfile with 500+ packages
+            - ✅ All packages have valid SHA-512 integrity hashes
+            - ✅ Verified with `npm ci`
+            - ✅ Configured npm with legacy peer deps
+            
+            ### Testing
+            The lockfile has been tested and verified to work with `npm ci`.
+            
+            ### Why
+            This fixes workflow failures caused by incomplete lockfile with missing dependencies and integrity hashes.
+            
+            ---
+            *Generated by workflow run #${{ github.run_number }} from branch ${{ github.ref_name }}*
+          labels: |
+            dependencies
+            automated
       
       - name: Summary
         if: success()
-        env:
-          HAS_CHANGES: ${{ steps.check_changes.outputs.has_changes }}
         run: |
-          if [ "${HAS_CHANGES}" == "true" ]; then
-            PACKAGES=$(jq '.packages | length' package-lock.json)
-            INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
-            
-            echo "🎉 Lockfile Regeneration Complete!"
-            echo ""
-            echo "📊 Final Stats:"
-            echo "  Total packages: $PACKAGES"
-            echo "  With integrity: $INTEGRITY_COUNT"
-            echo ""
-            echo "✅ The complete package-lock.json has been committed"
-            echo "✅ All future workflow runs will have proper dependencies"
-            echo "✅ npm ci will work correctly with the complete lockfile"
-          else
-            echo "ℹ️  Lockfile was already up to date - no changes needed"
-          fi
+          PACKAGES=$(jq '.packages | length' package-lock.json)
+          INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
+          
+          echo "🎉 Lockfile Regeneration Complete!"
+          echo ""
+          echo "📊 Final Stats:"
+          echo "  Total packages: $PACKAGES"
+          echo "  With integrity: $INTEGRITY_COUNT"
+          echo ""
+          echo "✅ A pull request has been created with the complete package-lock.json"
+          echo "✅ Review and merge the PR to apply the changes"
+          echo "✅ npm ci will work correctly with the complete lockfile"
