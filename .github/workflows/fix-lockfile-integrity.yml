@@ -28,19 +28,31 @@ jobs:
     
     steps:
       - name: Debug - Workflow context validation
+        env:
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_ACTOR: ${{ github.actor }}
+          GH_EVENT_NAME: ${{ github.event_name }}
+          GH_REF: ${{ github.ref }}
+          GH_SHA: ${{ github.sha }}
+          GH_RUN_ID: ${{ github.run_id }}
+          GH_RUN_NUMBER: ${{ github.run_number }}
+          GH_WORKFLOW: ${{ github.workflow }}
+          GH_JOB: ${{ github.job }}
+          RUNNER_OS: ${{ runner.os }}
+          RUNNER_ARCH: ${{ runner.arch }}
         run: |
           echo "🔍 === Workflow Context Debug Information ==="
-          echo "Repository: ${{ github.repository }}"
-          echo "Actor: ${{ github.actor }}"
-          echo "Event: ${{ github.event_name }}"
-          echo "Ref: ${{ github.ref }}"
-          echo "SHA: ${{ github.sha }}"
-          echo "Run ID: ${{ github.run_id }}"
-          echo "Run Number: ${{ github.run_number }}"
-          echo "Workflow: ${{ github.workflow }}"
-          echo "Job: ${{ github.job }}"
-          echo "Runner OS: ${{ runner.os }}"
-          echo "Runner Arch: ${{ runner.arch }}"
+          echo "Repository: $GH_REPOSITORY"
+          echo "Actor: $GH_ACTOR"
+          echo "Event: $GH_EVENT_NAME"
+          echo "Ref: $GH_REF"
+          echo "SHA: $GH_SHA"
+          echo "Run ID: $GH_RUN_ID"
+          echo "Run Number: $GH_RUN_NUMBER"
+          echo "Workflow: $GH_WORKFLOW"
+          echo "Job: $GH_JOB"
+          echo "Runner OS: $RUNNER_OS"
+          echo "Runner Arch: $RUNNER_ARCH"
           echo "================================================"
           
       - name: Checkout repository
@@ -148,12 +160,16 @@ jobs:
       - name: Generate fix summary
         if: steps.check.outputs.has_issues == 'true'
         id: summary
+        env:
+          INPUT_REASON: ${{ github.event.inputs.reason }}
         run: |
           echo "📊 Generating fix summary..."
           
           PACKAGE_COUNT=$(jq '.packages | length' package-lock.json)
           INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
-          REASON="${{ github.event.inputs.reason }}"
+          
+          # Use environment variable instead of GitHub Actions expression
+          REASON="${INPUT_REASON}"
           if [ -z "$REASON" ]; then
             REASON="Fix package-lock.json integrity hashes"
           fi
@@ -204,6 +220,8 @@ EOF
         uses: peter-evans/create-pull-request@v6
         id: create_pr
         continue-on-error: true
+        env:
+          COMMIT_REASON: ${{ github.event.inputs.reason || 'Fix package-lock.json integrity hashes' }}
         with:
           token: ${{ github.token }}
           commit-message: |
@@ -215,7 +233,7 @@ EOF
             - Prevents installation of tampered dependencies
             - Ensures reproducible and secure builds
             
-            Reason: ${{ github.event.inputs.reason || 'Fix package-lock.json integrity hashes' }}
+            Reason: ${{ env.COMMIT_REASON }}
           branch: fix-lockfile-integrity-${{ github.run_number }}
           delete-branch: true
           title: "🔒 Fix: Regenerate package-lock.json with correct integrity hashes"
@@ -228,11 +246,15 @@ EOF
           
       - name: PR Creation Status
         if: steps.check.outputs.has_issues == 'true' && github.event_name == 'workflow_dispatch'
+        env:
+          PR_OUTCOME: ${{ steps.create_pr.outcome }}
+          PR_NUMBER: ${{ steps.create_pr.outputs.pull-request-number }}
+          PR_URL: ${{ steps.create_pr.outputs.pull-request-url }}
         run: |
-          if [ "${{ steps.create_pr.outcome }}" == "success" ]; then
+          if [ "$PR_OUTCOME" == "success" ]; then
             echo "✅ Pull request created successfully!"
-            echo "PR Number: ${{ steps.create_pr.outputs.pull-request-number }}"
-            echo "PR URL: ${{ steps.create_pr.outputs.pull-request-url }}"
+            echo "PR Number: $PR_NUMBER"
+            echo "PR URL: $PR_URL"
           else
             echo "⚠️  Could not create pull request automatically"
             echo "This may be due to permissions or existing PR"
@@ -245,8 +267,10 @@ EOF
           
       - name: Report validation results (push events)
         if: github.event_name == 'push'
+        env:
+          HAS_ISSUES: ${{ steps.check.outputs.has_issues }}
         run: |
-          if [ "${{ steps.check.outputs.has_issues }}" == "true" ]; then
+          if [ "$HAS_ISSUES" == "true" ]; then
             echo "⚠️  VALIDATION FAILED: Lockfile has integrity issues"
             echo ""
             echo "To fix these issues, manually trigger the workflow:"
@@ -264,8 +288,10 @@ EOF
           
       - name: Workflow completion
         if: github.event_name == 'workflow_dispatch'
+        env:
+          HAS_ISSUES: ${{ steps.check.outputs.has_issues }}
         run: |
-          if [ "${{ steps.check.outputs.has_issues }}" == "true" ]; then
+          if [ "$HAS_ISSUES" == "true" ]; then
             echo "🎉 Lockfile integrity fix workflow completed successfully!"
             echo ""
             echo "Summary:"
