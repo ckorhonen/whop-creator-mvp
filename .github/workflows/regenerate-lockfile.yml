@@ -79,34 +79,6 @@ jobs:
           echo "Total packages: $(grep -c '"resolved":' package-lock.json || echo '0')"
           echo "File size: $(du -h package-lock.json | cut -f1)"
       
-      - name: Commit and push changes
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          
-          git add package-lock.json
-          
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-            exit 0
-          fi
-          
-          git commit -m "🔧 Regenerate complete package-lock.json
-
-This fixes the incomplete lockfile that was causing deployment issues.
-
-Changes:
-- Complete dependency resolution with all transitive dependencies
-- Proper integrity hashes for all packages
-- Verified lockfile format
-
-This resolves workflow run #19202893487 failure.
-Fixes npm install warnings and enables proper dependency caching."
-          
-          git push origin fix-deployment-run-19202893487
-          
-          echo "✅ Changes committed and pushed"
-      
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
