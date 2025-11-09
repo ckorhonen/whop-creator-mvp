@@ -1,0 +1,38 @@
+name: Generate package-lock.json
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Generate package-lock.json
+        run: |
+          echo "Generating package-lock.json..."
+          npm install --package-lock-only
+          echo "✅ package-lock.json generated"
+      
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          commit-message: 'Add package-lock.json for reproducible builds'
+          title: 'Add package-lock.json'
+          body: |
+            ## Add package-lock.json
+            
+            This PR adds the missing `package-lock.json` file to enable:
+            - 🚀 Faster CI/CD builds with npm caching
+            - 🔒 Reproducible builds across environments
+            - ✅ Locked dependency versions
+            
+            Generated with `npm install --package-lock-only` using Node.js 20.
+          branch: add-package-lock-file
+          delete-branch: true
