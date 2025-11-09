@@ -6,16 +6,19 @@ on:
       reason:
         description: 'Reason for integrity fix (optional)'
         required: false
+        type: string
         default: 'Fix package-lock.json integrity hashes'
   push:
+    branches:
+      - main
+      - master
     paths:
       - 'package.json'
 
-# Required permissions for create-pull-request action
+# Workflow-level permissions
 permissions:
   contents: write
   pull-requests: write
-  actions: read
 
 jobs:
   fix-integrity:
@@ -23,16 +26,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     
-    # Explicit permissions at job level (redundant but ensures they apply)
-    permissions:
-      contents: write
-      pull-requests: write
-      actions: read
-    
     steps:
-      - name: Debug - Check permissions
+      - name: Workflow initialization check
         run: |
-          echo "🔍 Checking workflow permissions..."
+          echo "🚀 Workflow initialized successfully"
           echo "Repository: ${{ github.repository }}"
           echo "Actor: ${{ github.actor }}"
           echo "Event: ${{ github.event_name }}"
@@ -48,10 +45,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # Note: npm cache is intentionally NOT enabled here because this workflow
-          # is designed to fix broken/missing lockfiles. The cache setup requires
-          # a valid package-lock.json which may not exist or be corrupted.
-      
+          
       - name: Install jq
         run: |
           echo "📦 Installing jq for JSON processing..."
