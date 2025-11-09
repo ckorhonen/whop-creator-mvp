@@ -27,8 +27,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # Note: cache disabled because we're regenerating the lockfile
-          # cache: 'npm' would fail if lockfile is missing or invalid
+          # Disable cache to ensure fresh package metadata
+          # cache: 'npm'
       
       - name: Configure Git
         run: |
@@ -63,28 +63,45 @@ jobs:
             echo "✅ Lockfile appears valid (no placeholders)"
           fi
       
-      - name: Remove and regenerate lockfile
+      - name: Clear caches and prepare for regeneration
         if: steps.analyze.outputs.status != 'valid' || github.event.inputs.force == 'true'
         run: |
-          echo "=== Regenerating Lockfile ===="
+          echo "=== Clearing Caches ===="
+          
+          # Remove node_modules if it exists
+          if [ -d node_modules ]; then
+            rm -rf node_modules
+            echo "✅ Removed node_modules"
+          fi
+          
+          # Clear npm cache to ensure fresh downloads
+          npm cache clean --force
+          echo "✅ Cleared npm cache"
           
           # Remove existing lockfile
           if [ -f package-lock.json ]; then
             rm package-lock.json
             echo "✅ Removed old lockfile"
           fi
-          
-          # Regenerate with npm
+      
+      - name: Regenerate lockfile
+        if: steps.analyze.outputs.status != 'valid' || github.event.inputs.force == 'true'
+        run: |
+          echo "=== Regenerating Lockfile ===="
           echo ""
-          echo "Running: npm install --package-lock-only"
-          echo "This will fetch package metadata and generate proper integrity hashes..."
-          npm install --package-lock-only
+          echo "Running: npm install --package-lock-only --loglevel=verbose"
+          echo "This will fetch fresh package metadata and generate proper integrity hashes..."
+          echo ""
+          
+          # Regenerate with verbose logging for debugging
+          npm install --package-lock-only --loglevel=verbose
           
           if [ ! -f package-lock.json ]; then
             echo "❌ ERROR: Failed to generate lockfile"
             exit 1
           fi
           
+          echo ""
           echo "✅ New lockfile generated"
       
       - name: Verify new lockfile
@@ -115,7 +132,7 @@ jobs:
           echo "=== Lockfile Statistics ===="
           echo "📊 Total lines: $(wc -l < package-lock.json)"
           echo "📦 Packages with integrity: $REAL_HASHES"
-          echo "📦 Packages with resolved: $(grep -c '"resolved":' package-lock.json 2>/dev/null || echo '0')"
+          echo "📦 Packages with resolved: $(grep -c '\"resolved\":' package-lock.json 2>/dev/null || echo '0')"
           echo "💾 File size: $(du -h package-lock.json | cut -f1)"
       
       - name: Commit and push changes
@@ -124,18 +141,19 @@ jobs:
           echo "=== Committing Changes ===="
           
           # Check if there are changes
-          if ! git diff --quiet package-lock.json; then
+          if ! git diff --quiet package-lock.json 2>/dev/null; then
             git add package-lock.json
             
-            PLACEHOLDER_COUNT="${{ steps.analyze.outputs.placeholder_count }}"
-            RESOLVED_COUNT=$(grep -c '"resolved":' package-lock.json || echo '0')
+            PLACEHOLDER_COUNT="${placeholder_count:-0}"
+            RESOLVED_COUNT=$(grep -c '\"resolved\":' package-lock.json 2>/dev/null || echo '0')
             
             git commit -m "🔧 Regenerate package-lock.json with real integrity hashes
 
 Fixed placeholder/example integrity hashes with real SHA-512 hashes.
 
 Changes:
-- Removed lockfile with placeholder hashes (${PLACEHOLDER_COUNT:-0} found)
+- Removed lockfile with placeholder hashes ($PLACEHOLDER_COUNT found)
+- Cleared npm cache to ensure fresh package metadata
 - Regenerated using npm install --package-lock-only
 - Verified all packages now have proper integrity hashes
 - Total packages: $RESOLVED_COUNT
@@ -162,7 +180,7 @@ This enables proper dependency verification and caching in CI/CD."
           echo "Status: ${{ steps.analyze.outputs.status }}"
           
           if [ -f package-lock.json ]; then
-            REAL_HASHES=$(grep -c '"integrity": "sha' package-lock.json 2>/dev/null || echo "0")
+            REAL_HASHES=$(grep -c '\"integrity\": \"sha' package-lock.json 2>/dev/null || echo "0")
             PLACEHOLDERS=$(grep -c "example-.*-hash" package-lock.json 2>/dev/null || echo "0")
             
             if [ "$PLACEHOLDERS" -eq "0" ] && [ "$REAL_HASHES" -gt "0" ]; then
