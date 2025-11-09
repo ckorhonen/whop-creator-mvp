@@ -100,25 +100,40 @@ jobs:
           
           if [ -f package-lock.json ]; then
             LOCKFILE_SIZE=$(wc -l < package-lock.json)
-            if [ "$LOCKFILE_SIZE" -gt 100 ]; then
+            # A complete lockfile for a React+Vite+TypeScript project should have 1500+ lines
+            # The current lockfile has only ~270 lines, which is incomplete
+            if [ "$LOCKFILE_SIZE" -gt 1500 ]; then
               echo "✅ Found complete package-lock.json ($LOCKFILE_SIZE lines)"
               echo "Using npm ci for fast, reproducible installation"
               npm ci
               echo "✅ Dependencies installed successfully with npm ci"
             else
               echo "⚠️  Warning: package-lock.json appears incomplete ($LOCKFILE_SIZE lines)"
-              echo "Using npm install instead"
+              echo "Expected at least 1500 lines for a complete lockfile"
+              echo "Using npm install to generate/update lockfile"
               npm install
               echo "✅ Dependencies installed successfully with npm install"
+              
+              # Check if lockfile was updated
+              NEW_LOCKFILE_SIZE=$(wc -l < package-lock.json)
+              if [ "$NEW_LOCKFILE_SIZE" -ne "$LOCKFILE_SIZE" ]; then
+                echo ""
+                echo "📝 Lockfile was updated from $LOCKFILE_SIZE to $NEW_LOCKFILE_SIZE lines"
+                echo "💡 Tip: Commit the updated package-lock.json to enable faster builds"
+                echo "    Run the 'Generate Complete Lockfile' workflow or commit locally"
+              fi
             fi
           else
             echo "⚠️  Warning: package-lock.json not found"
             echo "Using npm install (slower and less reproducible)"
             npm install
             echo "✅ Dependencies installed successfully with npm install"
+            echo ""
+            echo "💡 Tip: Run 'npm install' locally and commit package-lock.json"
+            echo "    This will enable faster, more reliable CI builds"
           fi
           echo "=============================="
-        timeout-minutes: 5
+        timeout-minutes: 10
       
       - name: Type Check
         continue-on-error: true
