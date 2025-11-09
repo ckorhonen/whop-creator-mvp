@@ -6,10 +6,11 @@ on:
     paths:
       - '.github/workflows/regenerate-complete-lockfile.yml'
 
-# Permissions are automatically read-only for pull_request events
-# Only workflow_dispatch gets write permissions
+# For pull_request events, permissions are read-only (cannot commit)
+# For workflow_dispatch, we need write permissions to commit the lockfile
+# Note: Dynamic expressions are NOT supported here, must be static values
 permissions:
-  contents: ${{ github.event_name == 'workflow_dispatch' && 'write' || 'read' }}
+  contents: write
   pull-requests: read
 
 jobs:
@@ -29,8 +30,10 @@ jobs:
           echo "  Run ID: ${{ github.run_id }}"
           echo ""
           echo "🔐 Permissions:"
-          echo "  Contents: ${{ github.event_name == 'workflow_dispatch' && 'write' || 'read' }}"
-          echo "  Will commit: ${{ github.event_name == 'workflow_dispatch' }}"
+          echo "  Event type: ${{ github.event_name }}"
+          echo "  Will attempt commit: ${{ github.event_name == 'workflow_dispatch' }}"
+          echo ""
+          echo "⚠️  Note: On PR events, commit will be skipped (read-only fork)"
       
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -38,7 +41,7 @@ jobs:
           ref: ${{ github.head_ref || github.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
           # For workflow_dispatch, we need to ensure we can push
-          persist-credentials: ${{ github.event_name == 'workflow_dispatch' }}
+          persist-credentials: true
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -126,7 +129,8 @@ jobs:
           echo "✅ npm ci successful!"
       
       - name: Commit and push complete lockfile
-        # Only commit when manually triggered, not on PR events (read-only context)
+        # Only commit when manually triggered, not on PR events
+        # PR events from forks don't have write access even with permissions: write
         if: github.event_name == 'workflow_dispatch'
         run: |
           git config user.name "github-actions[bot]"
