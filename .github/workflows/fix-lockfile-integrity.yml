@@ -152,34 +152,34 @@ jobs:
           PACKAGE_COUNT=$(jq '.packages | length' package-lock.json)
           INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
           
-          cat > fix-summary.md <<'EOF'
-# Lockfile Integrity Fix Summary
-
-## Problem Detected
-- ❌ Package-lock.json contained placeholder integrity hashes
-- ❌ This prevents proper dependency verification
-- ❌ Causes security and reproducibility issues
-
-## Changes Made
-- ✅ Regenerated package-lock.json with valid integrity hashes
-- 📦 Fixed integrity for packages in the lockfile
-- 🔒 Enabled proper dependency verification
-
-## What This Fixes
-- ✅ Ensures packages are verified against their checksums
-- ✅ Prevents tampered or corrupted packages
-- ✅ Enables security scanning and audit tools
-- ✅ Ensures reproducible builds
-- ✅ Complies with npm security best practices
-
-## Next Steps
-1. Review the integrity hash changes
-2. Merge to enable proper dependency verification
-3. All future installs will verify package integrity
-
----
-*Generated automatically by fix-lockfile-integrity workflow*
-EOF
+          cat > fix-summary.md << 'SUMMARY_EOF'
+          # Lockfile Integrity Fix Summary
+          
+          ## Problem Detected
+          - ❌ Package-lock.json contained placeholder integrity hashes
+          - ❌ This prevents proper dependency verification
+          - ❌ Causes security and reproducibility issues
+          
+          ## Changes Made
+          - ✅ Regenerated package-lock.json with valid integrity hashes
+          - 📦 Fixed integrity for packages in the lockfile
+          - 🔒 Enabled proper dependency verification
+          
+          ## What This Fixes
+          - ✅ Ensures packages are verified against their checksums
+          - ✅ Prevents tampered or corrupted packages
+          - ✅ Enables security scanning and audit tools
+          - ✅ Ensures reproducible builds
+          - ✅ Complies with npm security best practices
+          
+          ## Next Steps
+          1. Review the integrity hash changes
+          2. Merge to enable proper dependency verification
+          3. All future installs will verify package integrity
+          
+          ---
+          *Generated automatically by fix-lockfile-integrity workflow*
+          SUMMARY_EOF
           
       - name: Create Pull Request
         if: steps.check.outputs.has_issues == 'true'
@@ -191,10 +191,7 @@ EOF
           delete-branch: true
           title: "🔒 Fix: Regenerate package-lock.json with correct integrity hashes"
           body-path: fix-summary.md
-          labels: |
-            security
-            dependencies
-            automated
+          labels: security,dependencies,automated
           assignees: ${{ github.actor }}
           
       - name: Workflow completion
