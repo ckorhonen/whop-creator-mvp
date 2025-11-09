@@ -7,13 +7,8 @@ on:
         description: 'Reason for integrity fix (optional)'
         required: false
         default: 'Fix package-lock.json integrity hashes'
-  push:
-    paths:
-      - 'package.json'
 
 # Required permissions for create-pull-request action
-# These are needed for workflow_dispatch events
-# For push events, the workflow runs but doesn't create PRs (controlled by step conditions)
 permissions:
   contents: write
   pull-requests: write
@@ -198,8 +193,7 @@ EOF
           cat fix-summary.md
           
       - name: Create Pull Request
-        # Only create PR when manually dispatched, not on automatic push events
-        if: steps.check.outputs.has_issues == 'true' && github.event_name == 'workflow_dispatch'
+        if: steps.check.outputs.has_issues == 'true'
         uses: peter-evans/create-pull-request@v6
         id: create_pr
         continue-on-error: true
@@ -226,7 +220,7 @@ EOF
           assignees: ${{ github.actor }}
           
       - name: PR Creation Status
-        if: steps.check.outputs.has_issues == 'true' && github.event_name == 'workflow_dispatch'
+        if: steps.check.outputs.has_issues == 'true'
         run: |
           if [ "${{ steps.create_pr.outcome }}" == "success" ]; then
             echo "✅ Pull request created successfully!"
@@ -242,27 +236,7 @@ EOF
             echo "3. Create a PR with the changes"
           fi
           
-      - name: Report validation results (push events)
-        if: github.event_name == 'push'
-        run: |
-          if [ "${{ steps.check.outputs.has_issues }}" == "true" ]; then
-            echo "⚠️  VALIDATION FAILED: Lockfile has integrity issues"
-            echo ""
-            echo "To fix these issues, manually trigger the workflow:"
-            echo "  1. Go to Actions → Fix Lockfile Integrity"
-            echo "  2. Click 'Run workflow'"
-            echo "  3. This will create a PR with the fixes"
-            echo ""
-            if [ -f "fix-summary.md" ]; then
-              cat fix-summary.md
-            fi
-            exit 1
-          else
-            echo "✅ VALIDATION PASSED: Lockfile integrity is healthy!"
-          fi
-          
       - name: Workflow completion
-        if: github.event_name == 'workflow_dispatch'
         run: |
           if [ "${{ steps.check.outputs.has_issues }}" == "true" ]; then
             echo "🎉 Lockfile integrity fix workflow completed successfully!"
