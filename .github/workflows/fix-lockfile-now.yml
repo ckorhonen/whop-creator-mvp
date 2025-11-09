@@ -7,6 +7,15 @@ on:
         description: 'Reason for lockfile fix (optional)'
         required: false
         default: 'Manual lockfile regeneration'
+  push:
+    paths:
+      - '.github/workflows/fix-lockfile-now.yml'
+      - 'package.json'
+    branches:
+      - 'fix/lockfile-integrity'
+
+permissions:
+  contents: write
 
 jobs:
   fix-lockfile:
@@ -18,7 +27,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -76,16 +85,21 @@ jobs:
           
           if [ "$PACKAGE_COUNT" -lt 50 ]; then
             echo "⚠️  Warning: Lockfile seems incomplete (only $PACKAGE_COUNT packages)"
+            echo "⚠️  Expected at least 50 packages for this project"
           fi
           
           # Check lockfile size
           LOCKFILE_SIZE=$(wc -c < package-lock.json)
           echo "📏 Lockfile size: $LOCKFILE_SIZE bytes"
           
-          if [ "$LOCKFILE_SIZE" -lt 1000 ]; then
-            echo "❌ Lockfile is too small, likely incomplete"
+          if [ "$LOCKFILE_SIZE" -lt 10000 ]; then
+            echo "❌ Lockfile is too small ($LOCKFILE_SIZE bytes), likely incomplete"
             exit 1
           fi
+          
+          # Count packages with integrity hashes
+          INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
+          echo "🔒 Packages with integrity hashes: $INTEGRITY_COUNT"
           
           echo "✅ Lockfile appears complete"
           
@@ -96,68 +110,62 @@ jobs:
           npm ci
           echo "✅ npm ci successful"
           
-      - name: Generate fix summary
-        id: summary
+      - name: Display summary
         run: |
           echo "📊 Generating fix summary..."
           
           PACKAGE_COUNT=$(jq '.packages | length' package-lock.json)
+          INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
           LOCKFILE_SIZE=$(wc -c < package-lock.json)
-          REASON="${{ github.event.inputs.reason }}"
           
-          cat > fix-summary.md << EOF
-          # Lockfile Fix Summary
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📦 Lockfile Fix Summary"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ Total packages: $PACKAGE_COUNT"
+          echo "🔒 Packages with integrity: $INTEGRITY_COUNT"
+          echo "📏 Lockfile size: $LOCKFILE_SIZE bytes"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
           
-          ## Changes Made
-          - ✅ Generated complete package-lock.json
-          - 📦 Locked ${PACKAGE_COUNT} packages
-          - 📏 Lockfile size: ${LOCKFILE_SIZE} bytes
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          ## What This Fixes
-          - ✅ Enables npm ci for faster, reproducible builds
-          - ✅ Locks all dependencies to specific versions
-          - ✅ Enables npm caching in CI (2-3x faster builds)
-          - ✅ Prevents dependency resolution conflicts
-          - ✅ Ensures consistent builds across environments
-          
-          ## Reason
-          ${REASON}
-          
-          ## Next Steps
-          1. Review the changes in this PR
-          2. Merge to enable faster, more reliable builds
-          3. Update deploy.yml to use npm ci and caching
-          
-          ---
-          *Generated automatically by fix-lockfile-now workflow*
-          EOF
-          
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: |
-            Fix: Generate complete package-lock.json
+          if git diff --quiet package-lock.json 2>/dev/null; then
+            echo "ℹ️  No changes to commit - lockfile is already up to date"
+          else
+            echo "📝 Committing updated package-lock.json..."
+            git add package-lock.json
             
-            Generated complete lockfile to resolve dependency issues:
-            - Enables npm ci for faster builds (15-20s vs 60-90s)
-            - Locks all dependencies to specific versions
-            - Enables npm caching in CI workflows
-            - Prevents version conflicts and build failures
+            PACKAGE_COUNT=$(jq '.packages | length' package-lock.json)
+            INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
             
-            Reason: ${{ github.event.inputs.reason }}
-          branch: fix-lockfile-${{ github.run_number }}
-          delete-branch: true
-          title: "🔧 Fix: Generate complete package-lock.json"
-          body-path: fix-summary.md
-          labels: |
-            dependencies
-            automated
-          assignees: ${{ github.actor }}
+            git commit -m "fix: Regenerate complete package-lock.json with integrity hashes
+
+Generated complete lockfile with $PACKAGE_COUNT packages and $INTEGRITY_COUNT integrity hashes.
+
+This fixes:
+- ✅ Incomplete lockfile (was minimal with only root package)
+- ✅ Missing integrity hashes for security verification
+- ✅ Enables proper dependency verification
+- ✅ Enables npm ci for faster, reproducible builds
+- ✅ Enables npm caching in CI workflows
+
+Reason: ${{ github.event.inputs.reason || 'Auto-fix on push' }}"
+
+            git push
+            echo "✅ Changes committed and pushed to ${{ github.ref_name }}"
+          fi
           
       - name: Workflow completion
         run: |
-          echo "🎉 Lockfile fix workflow completed successfully!"
           echo ""
-          echo "Summary:"
-          cat fix-summary.md
+          echo "🎉 Lockfile fix workflow completed successfully!"
+          echo "✅ package-lock.json is now complete and ready for use"
+          echo ""
+          echo "Next steps:"
+          echo "1. Verify the workflow passes on this branch"
+          echo "2. Merge this branch to apply the fix"
+          echo "3. Future CI runs will use npm ci for faster builds"
