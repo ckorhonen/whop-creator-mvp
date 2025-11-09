@@ -10,6 +10,10 @@ on:
   push:
     paths:
       - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/fix-lockfile-integrity.yml'
+    branches:
+      - main
 
 # Required permissions for create-pull-request action
 permissions:
