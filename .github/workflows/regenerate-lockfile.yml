@@ -7,6 +7,7 @@ on:
         description: 'Force regeneration even if lockfile exists'
         required: false
         default: 'true'
+        type: string
 
 permissions:
   contents: write
@@ -125,7 +126,7 @@ Changes:
 Fixes workflow failures and enables proper dependency caching."
           
           echo "=== Pushing Changes ==="
-          echo "Pushing to branch: ${{ github.ref_name }}"
+          echo "Pushing to branch: ${GITHUB_REF_NAME}"
           git push
           
-          echo "✅ Changes committed and pushed to ${{ github.ref_name }}"
+          echo "✅ Changes committed and pushed to ${GITHUB_REF_NAME}"
