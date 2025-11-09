@@ -34,9 +34,9 @@ jobs:
         with:
           fetch-depth: 0
           # Use PAT if available for better push permissions, fallback to GITHUB_TOKEN
-          token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT_TOKEN != '' && secrets.PAT_TOKEN || github.token }}
           # Explicitly checkout the branch (not detached HEAD)
-          ref: ${{ github.head_ref || github.ref_name }}
+          ref: ${{ github.head_ref != '' && github.head_ref || github.ref_name }}
           persist-credentials: true
       
       - name: Setup Node.js
@@ -198,7 +198,7 @@ jobs:
       - name: Commit and push changes
         shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN != '' && secrets.PAT_TOKEN || github.token }}
         run: |
           echo "=== Committing Changes ==="
           
