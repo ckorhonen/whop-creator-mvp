@@ -10,12 +10,12 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     name: Deploy
-    timeout-minutes: 20  # Increased from 15 for more buffer
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1  # Shallow clone for faster checkout
+          fetch-depth: 1
         timeout-minutes: 2
       
       - name: Debug - Show environment
@@ -34,10 +34,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # Note: cache is disabled because there's no package-lock.json
-          # To enable caching, generate a complete lockfile with 'npm install'
-          # and commit it, then uncomment the line below:
-          # cache: 'npm'
+          # Enable caching when package-lock.json exists
+          cache: ${{ hashFiles('package-lock.json') != '' && 'npm' || '' }}
         timeout-minutes: 3
       
       - name: Validate Environment
@@ -92,14 +90,35 @@ jobs:
           fi
           echo "=============================="
       
+      - name: Check npm Registry Connectivity
+        id: npm_check
+        continue-on-error: true
+        run: |
+          echo "=== Checking npm Registry Connectivity ==="
+          if curl -I --max-time 10 https://registry.npmjs.org/ 2>&1 | grep -q "200 OK"; then
+            echo "✅ npm registry is accessible"
+            echo "registry_available=true" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️  Warning: npm registry may be unreachable"
+            echo "Will attempt install with retries"
+            echo "registry_available=false" >> $GITHUB_OUTPUT
+          fi
+          echo "=============================="
+      
       - name: Install dependencies
         run: |
           echo "=== Installing Dependencies ==="
           
+          # Configure npm for better reliability
+          npm config set fetch-retries 3
+          npm config set fetch-retry-mintimeout 20000
+          npm config set fetch-retry-maxtimeout 120000
+          npm config set fetch-timeout 60000
+          
           # Check if package-lock.json exists and is complete
           USE_NPM_CI=false
           if [ -f package-lock.json ]; then
-            # Check if the lockfile has actual package data (more than just metadata)
+            # Check if the lockfile has actual package data
             # Complete lockfiles have hundreds of lines; incomplete ones have < 30
             LOCKFILE_SIZE=$(wc -l < package-lock.json)
             if [ "$LOCKFILE_SIZE" -gt 30 ]; then
@@ -114,31 +133,57 @@ jobs:
           else
             echo "⚠️  Warning: package-lock.json not found"
             echo "Using npm install (slower and less reproducible)"
+            echo ""
+            echo "💡 To generate a lockfile:"
+            echo "   1. Go to Actions tab"
+            echo "   2. Run 'Generate package-lock.json' workflow"
+            echo "   3. Merge the resulting PR"
           fi
           
           # Function to try npm install with retries
           install_dependencies() {
-            local max_retries=2
+            local max_retries=3  # Increased from 2
             local retry_count=0
+            local backoff_time=5
             
             while [ $retry_count -le $max_retries ]; do
               if [ $retry_count -gt 0 ]; then
                 echo ""
                 echo "⚠️  Retry attempt $retry_count of $max_retries"
+                echo "Waiting ${backoff_time}s before retry..."
+                sleep $backoff_time
+                
                 echo "Cleaning npm cache..."
                 npm cache clean --force
-                sleep 5
+                npm cache verify
+                
+                # Exponential backoff
+                backoff_time=$((backoff_time + 5))
               fi
               
-              echo "Installing dependencies (attempt $((retry_count + 1)))..."
+              echo ""
+              echo "📦 Installing dependencies (attempt $((retry_count + 1)))..."
               
               if [ "$USE_NPM_CI" = true ]; then
-                if npm ci --loglevel=error; then
+                # Try npm ci first
+                if npm ci --loglevel=error 2>&1 | tee npm-install.log; then
                   echo "✅ Dependencies installed successfully with npm ci"
                   return 0
+                else
+                  echo "❌ npm ci failed, checking if lockfile is corrupted..."
+                  # If npm ci fails, lockfile might be incomplete/corrupted
+                  # Fall back to npm install on next retry
+                  USE_NPM_CI=false
+                  echo "⚠️  Will use npm install on next attempt"
                 fi
               else
-                if npm install --loglevel=error; then
+                # Use npm install with prefer-offline on retries
+                local npm_flags="--loglevel=error"
+                if [ $retry_count -gt 0 ]; then
+                  npm_flags="$npm_flags --prefer-offline"
+                fi
+                
+                if npm install $npm_flags 2>&1 | tee npm-install.log; then
                   echo "✅ Dependencies installed successfully with npm install"
                   return 0
                 fi
@@ -148,6 +193,8 @@ jobs:
               
               if [ $retry_count -le $max_retries ]; then
                 echo "❌ Installation failed, will retry..."
+                echo "Last error from npm:"
+                tail -n 20 npm-install.log
               fi
             done
             
@@ -157,13 +204,20 @@ jobs:
             echo "🔍 Troubleshooting information:"
             echo "- npm version: $(npm --version)"
             echo "- Node version: $(node --version)"
-            echo "- Network connectivity to npm registry:"
-            curl -I https://registry.npmjs.org/ || echo "Cannot reach npm registry"
+            echo "- npm config:"
+            npm config list
+            echo ""
+            echo "- Last 50 lines of npm output:"
+            tail -n 50 npm-install.log || cat npm-install.log
+            echo ""
+            echo "- Network connectivity check:"
+            curl -v https://registry.npmjs.org/ || echo "Cannot reach npm registry"
             echo ""
             echo "💡 Possible solutions:"
-            echo "1. Try re-running the workflow (may be a transient npm registry issue)"
-            echo "2. Generate a package-lock.json file locally and commit it"
-            echo "3. Check if any packages in package.json are unavailable"
+            echo "1. Re-run this workflow (may be a transient npm registry issue)"
+            echo "2. Generate package-lock.json via the 'Generate package-lock.json' workflow"
+            echo "3. Check if all packages in package.json are available on npm"
+            echo "4. Verify network connectivity to registry.npmjs.org"
             return 1
           }
           
@@ -172,22 +226,32 @@ jobs:
             exit 1
           fi
           
+          # Show installed packages
           echo ""
-          echo "💡 To speed up future builds:"
-          echo "   Run 'npm install' locally and commit the complete package-lock.json"
+          echo "📋 Installed packages:"
+          npm list --depth=0 || echo "Unable to list packages"
+          
+          echo ""
+          echo "💡 Performance tip:"
+          echo "   Generate and commit package-lock.json to speed up future builds by 2-3x"
           echo "=============================="
-        timeout-minutes: 10  # Increased from 5 to handle slow npm install without lockfile
+        timeout-minutes: 12  # Increased to 12 for maximum reliability
+        env:
+          NPM_CONFIG_LOGLEVEL: error
       
       - name: Type Check
-        continue-on-error: true  # Don't fail workflow on type errors
+        continue-on-error: true
         run: |
           echo "=== Running Type Check ==="
-          npm run typecheck || {
+          if npm run typecheck 2>&1 | tee typecheck.log; then
+            echo "✅ Type check passed"
+          else
             echo "⚠️  TypeScript errors found, but continuing with build"
+            echo "Errors:"
+            cat typecheck.log
+            echo ""
             echo "Fix these issues in your next commit"
-            exit 0
-          }
-          echo "✅ Type check passed"
+          fi
           echo "=============================="
         timeout-minutes: 3
       
@@ -198,43 +262,47 @@ jobs:
           # Pre-build validation
           echo "Validating build configuration..."
           if [ ! -f vite.config.ts ]; then
-            echo "⚠️  Warning: vite.config.ts not found"
-          else
-            echo "✅ vite.config.ts found"
+            echo "❌ Error: vite.config.ts not found"
+            echo "Cannot proceed with build"
+            exit 1
           fi
+          echo "✅ vite.config.ts found"
           
           echo ""
           echo "Starting build process..."
           if npm run build 2>&1 | tee build.log; then
+            echo ""
             echo "✅ Build completed successfully"
           else
             echo ""
             echo "❌ Build failed!"
             echo ""
             echo "🔍 Build error details:"
-            echo "Last 50 lines of build output:"
-            tail -n 50 build.log || cat build.log
+            echo "Last 100 lines of build output:"
+            tail -n 100 build.log || cat build.log
             echo ""
             echo "💡 Common build issues:"
-            echo "1. TypeScript errors (check 'npm run typecheck')"
-            echo "2. Missing dependencies (verify package.json)"
+            echo "1. TypeScript errors (check 'npm run typecheck' output above)"
+            echo "2. Missing dependencies (re-run npm install)"
             echo "3. Import path errors (check file paths in source)"
+            echo "4. Vite configuration errors (check vite.config.ts)"
             exit 1
           fi
           echo "=============================="
-        timeout-minutes: 8  # Increased from 5 for complex builds
+        timeout-minutes: 8
       
       - name: Verify Build Output
         run: |
           echo "=== Verifying Build Output ==="
           if [ ! -d "dist" ]; then
             echo "❌ Error: dist directory not found after build"
-            echo "Build may have failed. Check the Build step logs above."
+            echo "Build may have failed silently. Check the Build step logs above."
             echo "Current directory contents:"
             ls -la
             exit 1
           fi
           echo "✅ dist directory exists"
+          echo ""
           echo "Contents of dist directory:"
           ls -la dist/
           echo ""
@@ -243,6 +311,11 @@ jobs:
           echo ""
           echo "File count:"
           find dist -type f | wc -l
+          echo ""
+          echo "Key files present:"
+          [ -f dist/index.html ] && echo "✅ index.html" || echo "❌ index.html missing"
+          find dist -name "*.js" | head -1 > /dev/null && echo "✅ JavaScript files" || echo "❌ No JavaScript files"
+          find dist -name "*.css" | head -1 > /dev/null && echo "✅ CSS files" || echo "⚠️  No CSS files (may be normal)"
           echo "=============================="
       
       - name: Deploy to Cloudflare Pages
@@ -268,10 +341,28 @@ jobs:
           echo "✅ Build completed successfully!"
           echo "=============================="
       
+      - name: Upload Build Artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            npm-install.log
+            build.log
+            typecheck.log
+          if-no-files-found: ignore
+          retention-days: 7
+      
       - name: Workflow Summary
         if: always()
         run: |
           echo "=== Workflow Completion Summary ==="
           echo "Workflow completed at: $(date)"
           echo "Status: ${{ job.status }}"
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ All steps completed successfully"
+          else
+            echo "❌ Workflow failed - check logs above"
+            echo "Artifacts with logs have been uploaded"
+          fi
           echo "=============================="
