@@ -25,11 +25,13 @@ jobs:
     name: Regenerate and Commit Lockfile
     runs-on: ubuntu-latest
     
-    # Job inherits workflow-level permissions
-    # Explicitly stated for clarity
+    # Job permissions must match workflow-level to avoid override issues
+    # When job-level permissions are set, they override workflow-level
     permissions:
       contents: write
       actions: read
+      pull-requests: write
+      statuses: write
     
     steps:
       - name: Debug workflow context
