@@ -1,0 +1,13 @@
+# Workflow Trigger
+
+This file is used to trigger the fix-lockfile-now workflow.
+Generated at: 2025-11-09T04:46:35Z
+
+The workflow will:
+1. Clean npm cache and remove incomplete lockfile
+2. Generate complete package-lock.json with npm install --package-lock-only
+3. Verify the lockfile has all packages and integrity hashes
+4. Test installation with npm ci
+5. Commit the updated lockfile back to this branch
+
+Expected result: Complete package-lock.json with hundreds of packages and integrity hashes.
