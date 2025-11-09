@@ -52,6 +52,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: true
+          fetch-depth: 0  # Fetch complete history for proper git operations
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -138,17 +139,23 @@ jobs:
           npm ci
           echo "✅ npm ci successful!"
       
-      - name: Commit and push complete lockfile
+      - name: Configure Git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+      
+      - name: Commit and push complete lockfile
+        run: |
+          # Check for changes
           if git diff --quiet package-lock.json .npmrc 2>/dev/null; then
             echo "ℹ️  No changes to commit"
             exit 0
           fi
           
+          # Stage changes
           git add package-lock.json .npmrc
+          
+          # Create commit
           git commit -m "🔒 Regenerate complete package-lock.json with all dependencies
 
 - Generated complete lockfile with 500+ packages
@@ -159,11 +166,32 @@ jobs:
 This fixes the auto-fix-lockfile workflow failures by providing
 a complete dependency tree with proper integrity verification."
           
-          git push
-          
-          echo "✅ Complete lockfile committed and pushed!"
+          # Push with force-with-lease (safer than force)
+          echo "📤 Pushing changes to ${{ github.ref_name }}..."
+          if git push origin HEAD:${{ github.ref_name }} --force-with-lease; then
+            echo "✅ Complete lockfile committed and pushed!"
+          else
+            echo "❌ Push failed. Diagnostics:"
+            echo ""
+            echo "Current branch: ${{ github.ref_name }}"
+            echo "Git status:"
+            git status
+            echo ""
+            echo "Remote info:"
+            git remote -v
+            echo ""
+            echo "Recent commits:"
+            git log --oneline -3
+            echo ""
+            echo "Possible causes:"
+            echo "  - Branch protection rules require reviews"
+            echo "  - Token lacks sufficient permissions"
+            echo "  - Remote branch was updated (fetch and retry)"
+            exit 1
+          fi
       
       - name: Summary
+        if: success()
         run: |
           PACKAGES=$(jq '.packages | length' package-lock.json)
           INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
