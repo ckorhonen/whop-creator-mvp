@@ -147,44 +147,42 @@ jobs:
           
           PACKAGE_COUNT=$(jq '.packages | length' package-lock.json)
           INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
-          REASON="${{ github.event.inputs.reason || 'Fix package-lock.json integrity hashes' }}"
+          REASON="${{ github.event.inputs.reason }}"
+          if [ -z "$REASON" ]; then
+            REASON="Fix package-lock.json integrity hashes"
+          fi
           
-          cat > fix-summary.md << 'EOF'
-          # Lockfile Integrity Fix Summary
-          
-          ## Problem Detected
-          - ❌ Package-lock.json contained placeholder integrity hashes
-          - ❌ This prevents proper dependency verification
-          - ❌ Causes security and reproducibility issues
-          
-          ## Changes Made
-          - ✅ Regenerated package-lock.json with valid integrity hashes
-          - 📦 Fixed integrity for INTEGRITY_COUNT_PLACEHOLDER out of PACKAGE_COUNT_PLACEHOLDER packages
-          - 🔒 Enabled proper dependency verification
-          
-          ## What This Fixes
-          - ✅ Ensures packages are verified against their checksums
-          - ✅ Prevents tampered or corrupted packages
-          - ✅ Enables security scanning and audit tools
-          - ✅ Ensures reproducible builds
-          - ✅ Complies with npm security best practices
-          
-          ## Reason
-          REASON_PLACEHOLDER
-          
-          ## Next Steps
-          1. Review the integrity hash changes
-          2. Merge to enable proper dependency verification
-          3. All future installs will verify package integrity
-          
-          ---
-          *Generated automatically by fix-lockfile-integrity workflow*
+          cat > fix-summary.md <<EOF
+# Lockfile Integrity Fix Summary
+
+## Problem Detected
+- ❌ Package-lock.json contained placeholder integrity hashes
+- ❌ This prevents proper dependency verification
+- ❌ Causes security and reproducibility issues
+
+## Changes Made
+- ✅ Regenerated package-lock.json with valid integrity hashes
+- 📦 Fixed integrity for $INTEGRITY_COUNT out of $PACKAGE_COUNT packages
+- 🔒 Enabled proper dependency verification
+
+## What This Fixes
+- ✅ Ensures packages are verified against their checksums
+- ✅ Prevents tampered or corrupted packages
+- ✅ Enables security scanning and audit tools
+- ✅ Ensures reproducible builds
+- ✅ Complies with npm security best practices
+
+## Reason
+$REASON
+
+## Next Steps
+1. Review the integrity hash changes
+2. Merge to enable proper dependency verification
+3. All future installs will verify package integrity
+
+---
+*Generated automatically by fix-lockfile-integrity workflow*
 EOF
-          
-          # Replace placeholders with actual values
-          sed -i "s/PACKAGE_COUNT_PLACEHOLDER/${PACKAGE_COUNT}/g" fix-summary.md
-          sed -i "s/INTEGRITY_COUNT_PLACEHOLDER/${INTEGRITY_COUNT}/g" fix-summary.md
-          sed -i "s/REASON_PLACEHOLDER/${REASON}/g" fix-summary.md
           
       - name: Create Pull Request
         if: steps.check.outputs.has_issues == 'true'
