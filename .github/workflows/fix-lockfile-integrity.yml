@@ -67,7 +67,7 @@ jobs:
           fi
           
           # Check for example/placeholder integrity hashes
-          if grep -q "example-integrity-hash\|example-.*-hash" package-lock.json; then
+          if grep -q "example-integrity-hash" package-lock.json || grep -q "example-.*-hash" package-lock.json; then
             echo "❌ Found placeholder integrity hashes"
             echo "has_issues=true" >> $GITHUB_OUTPUT
           else
@@ -118,7 +118,7 @@ jobs:
           echo "🔍 Verifying integrity hashes..."
           
           # Check that no placeholder hashes remain
-          if grep -q "example-integrity-hash\|example-.*-hash" package-lock.json; then
+          if grep -q "example-integrity-hash" package-lock.json || grep -q "example-.*-hash" package-lock.json; then
             echo "❌ Still found placeholder integrity hashes after regeneration!"
             exit 1
           fi
@@ -148,7 +148,7 @@ jobs:
             REASON="Fix package-lock.json integrity hashes"
           fi
           
-          cat > fix-summary.md <<EOF
+          cat > fix-summary.md << 'EOF'
 # Lockfile Integrity Fix Summary
 
 ## Problem Detected
@@ -157,9 +157,11 @@ jobs:
 - ❌ Causes security and reproducibility issues
 
 ## Changes Made
-- ✅ Regenerated package-lock.json with valid integrity hashes
-- 📦 Fixed integrity for $INTEGRITY_COUNT out of $PACKAGE_COUNT packages
-- 🔒 Enabled proper dependency verification
+EOF
+          echo "- ✅ Regenerated package-lock.json with valid integrity hashes" >> fix-summary.md
+          echo "- 📦 Fixed integrity for $INTEGRITY_COUNT out of $PACKAGE_COUNT packages" >> fix-summary.md
+          echo "- 🔒 Enabled proper dependency verification" >> fix-summary.md
+          cat >> fix-summary.md << 'EOF'
 
 ## What This Fixes
 - ✅ Ensures packages are verified against their checksums
@@ -169,7 +171,9 @@ jobs:
 - ✅ Complies with npm security best practices
 
 ## Reason
-$REASON
+EOF
+          echo "$REASON" >> fix-summary.md
+          cat >> fix-summary.md << 'EOF'
 
 ## Next Steps
 1. Review the integrity hash changes
