@@ -19,7 +19,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref || github.ref }}
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Setup Node.js
@@ -135,16 +135,19 @@ a complete dependency tree with proper integrity verification."
           echo "✅ Complete lockfile committed and pushed!"
       
       - name: Summary
+        if: always()
         run: |
-          PACKAGES=$(jq '.packages | length' package-lock.json)
-          INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
-          
-          echo "🎉 Lockfile Regeneration Complete!"
-          echo ""
-          echo "📊 Final Stats:"
-          echo "  Total packages: $PACKAGES"
-          echo "  With integrity: $INTEGRITY_COUNT"
-          echo ""
+          if [ -f "package-lock.json" ]; then
+            PACKAGES=$(jq '.packages | length' package-lock.json)
+            INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
+            
+            echo "🎉 Lockfile Regeneration Complete!"
+            echo ""
+            echo "📊 Final Stats:"
+            echo "  Total packages: $PACKAGES"
+            echo "  With integrity: $INTEGRITY_COUNT"
+            echo ""
+          fi
           
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             echo "✅ The complete package-lock.json has been committed to this branch"
