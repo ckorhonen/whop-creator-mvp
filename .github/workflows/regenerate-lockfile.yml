@@ -53,13 +53,26 @@ jobs:
             echo "No existing lockfile found"
           fi
       
+      - name: Clean npm cache and node_modules
+        run: |
+          echo "=== Cleaning npm cache ==="
+          npm cache clean --force
+          
+          if [ -d node_modules ]; then
+            echo "Removing existing node_modules"
+            rm -rf node_modules
+          fi
+          
+          echo "✅ Cache and node_modules cleaned"
+      
       - name: Generate complete package-lock.json
         run: |
-          echo "=== Generating Complete Lockfile ==="
+          echo "=== Generating Complete Lockfile ===="
           echo "This will download and verify all dependencies..."
           
-          # Use npm install to generate a complete lockfile
-          npm install --package-lock-only
+          # Install dependencies to generate proper lockfile with integrity hashes
+          # We'll remove node_modules after to keep the commit clean
+          npm install
           
           if [ -f package-lock.json ]; then
             LOCKFILE_LINES=$(wc -l < package-lock.json)
@@ -85,11 +98,19 @@ jobs:
             exit 1
           fi
       
+      - name: Remove node_modules (keep only lockfile)
+        run: |
+          echo "=== Cleaning up node_modules ==="
+          if [ -d node_modules ]; then
+            rm -rf node_modules
+            echo "✅ Removed node_modules (keeping only lockfile)"
+          fi
+      
       - name: Verify lockfile
         run: |
           echo "=== Verifying Lockfile ==="
           
-          # Check if lockfile is valid
+          # Verify lockfile structure without installing
           if npm ls --package-lock-only 2>&1 | grep -q 'npm ERR!'; then
             echo "⚠️  Warning: Some dependency issues detected"
             npm ls --package-lock-only || true
