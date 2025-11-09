@@ -188,12 +188,21 @@ jobs:
       
       - name: Deploy to Cloudflare Pages
         if: steps.check_secrets.outputs.secrets_configured == 'true'
+        id: deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist --project-name=whop-creator-mvp
         timeout-minutes: 5
+      
+      - name: Deployment Success
+        if: steps.check_secrets.outputs.secrets_configured == 'true' && success()
+        run: |
+          echo "=== Deployment Successful ==="
+          echo "✅ Successfully deployed to Cloudflare Pages!"
+          echo "Project: whop-creator-mvp"
+          echo "=============================="
           
       - name: Deployment Skipped
         if: steps.check_secrets.outputs.secrets_configured != 'true'
