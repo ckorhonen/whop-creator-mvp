@@ -26,19 +26,37 @@ jobs:
     timeout-minutes: 15
     
     steps:
-      - name: Debug - Check permissions
+      - name: Debug - Workflow context validation
         run: |
-          echo "🔍 Checking workflow permissions..."
+          echo "🔍 === Workflow Context Debug Information ==="
           echo "Repository: ${{ github.repository }}"
           echo "Actor: ${{ github.actor }}"
           echo "Event: ${{ github.event_name }}"
           echo "Ref: ${{ github.ref }}"
+          echo "SHA: ${{ github.sha }}"
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Run Number: ${{ github.run_number }}"
+          echo "Workflow: ${{ github.workflow }}"
+          echo "Job: ${{ github.job }}"
+          echo "Runner OS: ${{ runner.os }}"
+          echo "Runner Arch: ${{ runner.arch }}"
+          
+          # Check token availability (without exposing it)
+          if [ -n "${{ secrets.GITHUB_TOKEN }}" ]; then
+            echo "✅ GITHUB_TOKEN is available"
+          else
+            echo "❌ GITHUB_TOKEN is NOT available"
+            exit 1
+          fi
+          
+          echo "================================================"
           
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
           
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -148,7 +166,7 @@ jobs:
             REASON="Fix package-lock.json integrity hashes"
           fi
           
-          cat > fix-summary.md <<EOF
+          cat > fix-summary.md <<'EOF'
 # Lockfile Integrity Fix Summary
 
 ## Problem Detected
@@ -158,7 +176,7 @@ jobs:
 
 ## Changes Made
 - ✅ Regenerated package-lock.json with valid integrity hashes
-- 📦 Fixed integrity for $INTEGRITY_COUNT out of $PACKAGE_COUNT packages
+- 📦 Fixed integrity for INTEGRITY_COUNT_PLACEHOLDER out of PACKAGE_COUNT_PLACEHOLDER packages
 - 🔒 Enabled proper dependency verification
 
 ## What This Fixes
@@ -169,7 +187,7 @@ jobs:
 - ✅ Complies with npm security best practices
 
 ## Reason
-$REASON
+REASON_PLACEHOLDER
 
 ## Next Steps
 1. Review the integrity hash changes
@@ -179,6 +197,14 @@ $REASON
 ---
 *Generated automatically by fix-lockfile-integrity workflow*
 EOF
+          
+          # Replace placeholders
+          sed -i "s/INTEGRITY_COUNT_PLACEHOLDER/$INTEGRITY_COUNT/g" fix-summary.md
+          sed -i "s/PACKAGE_COUNT_PLACEHOLDER/$PACKAGE_COUNT/g" fix-summary.md
+          sed -i "s/REASON_PLACEHOLDER/$REASON/g" fix-summary.md
+          
+          echo "✅ Summary generated:"
+          cat fix-summary.md
           
       - name: Create Pull Request
         # Only create PR when manually dispatched, not on automatic push events
