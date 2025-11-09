@@ -174,7 +174,7 @@ jobs:
             REASON="Fix package-lock.json integrity hashes"
           fi
           
-          cat > fix-summary.md <<'EOF'
+          cat > fix-summary.md << 'EOFMARKER'
 # Lockfile Integrity Fix Summary
 
 ## Problem Detected
@@ -204,7 +204,7 @@ REASON_PLACEHOLDER
 
 ---
 *Generated automatically by fix-lockfile-integrity workflow*
-EOF
+EOFMARKER
           
           # Replace placeholders
           sed -i "s/INTEGRITY_COUNT_PLACEHOLDER/$INTEGRITY_COUNT/g" fix-summary.md
