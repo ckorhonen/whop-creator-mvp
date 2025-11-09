@@ -7,7 +7,7 @@ on:
         description: 'Force regeneration even if lockfile exists'
         required: false
         default: 'true'
-        type: string
+        type: boolean
 
 permissions:
   contents: write
@@ -29,13 +29,13 @@ jobs:
           node-version: '20'
       
       - name: Configure Git
-        run: |
+        run: |-
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           echo "✅ Git configured"
       
       - name: Remove incomplete lockfile
-        run: |
+        run: |-
           echo "=== Removing incomplete lockfile ==="
           if [ -f package-lock.json ]; then
             echo "Found existing package-lock.json"
@@ -54,7 +54,7 @@ jobs:
           fi
       
       - name: Generate complete package-lock.json
-        run: |
+        run: |-
           echo "=== Generating Complete Lockfile ==="
           echo "This will download and verify all dependencies..."
           
@@ -86,7 +86,7 @@ jobs:
           fi
       
       - name: Verify lockfile
-        run: |
+        run: |-
           echo "=== Verifying Lockfile ==="
           
           # Check if lockfile is valid
@@ -104,7 +104,7 @@ jobs:
           echo "File size: $(du -h package-lock.json | cut -f1)"
       
       - name: Commit and push changes
-        run: |
+        run: |-
           echo "=== Committing Changes ==="
           
           git add package-lock.json
