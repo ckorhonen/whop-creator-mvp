@@ -6,6 +6,11 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+  deployments: write
+  statuses: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
