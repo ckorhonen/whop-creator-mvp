@@ -8,6 +8,10 @@ on:
         required: false
         default: 'Manual lockfile regeneration'
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   fix-lockfile:
     name: Generate Complete Lockfile
@@ -131,6 +135,9 @@ jobs:
           ---
           *Generated automatically by fix-lockfile-now workflow*
           EOF
+          
+          echo "📝 Fix summary generated:"
+          cat fix-summary.md
           
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6
