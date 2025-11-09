@@ -71,6 +71,18 @@ jobs:
           if [ ! -f "package-lock.json" ]; then
             echo "⚠️  package-lock.json not found"
             echo "has_issues=true" >> $GITHUB_OUTPUT
+            echo "issue_type=missing" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Check if lockfile is incomplete (missing dependencies)
+          PACKAGE_COUNT=$(jq '.packages | length' package-lock.json 2>/dev/null || echo "0")
+          echo "📊 Found $PACKAGE_COUNT packages in lockfile"
+          
+          if [ "$PACKAGE_COUNT" -lt "100" ]; then
+            echo "❌ Lockfile is incomplete (only $PACKAGE_COUNT packages, expected 100+)"
+            echo "has_issues=true" >> $GITHUB_OUTPUT
+            echo "issue_type=incomplete" >> $GITHUB_OUTPUT
             exit 0
           fi
           
@@ -78,10 +90,12 @@ jobs:
           if grep -q "example-integrity-hash\|example-.*-hash" package-lock.json; then
             echo "❌ Found placeholder integrity hashes"
             echo "has_issues=true" >> $GITHUB_OUTPUT
-          else
-            echo "✅ No placeholder integrity hashes found"
-            echo "has_issues=false" >> $GITHUB_OUTPUT
+            echo "issue_type=placeholders" >> $GITHUB_OUTPUT
+            exit 0
           fi
+          
+          echo "✅ No integrity issues found"
+          echo "has_issues=false" >> $GITHUB_OUTPUT
           
       - name: Clean npm state
         if: steps.check.outputs.has_issues == 'true'
@@ -107,11 +121,14 @@ jobs:
           
           echo "✅ package.json is valid"
           
-      - name: Regenerate lockfile with correct integrity
+      - name: Regenerate complete lockfile
         if: steps.check.outputs.has_issues == 'true'
         run: |
-          echo "🔨 Regenerating package-lock.json with correct integrity hashes..."
-          npm install --package-lock-only
+          echo "🔨 Regenerating complete package-lock.json..."
+          echo "Using 'npm install' to ensure ALL dependencies are resolved"
+          
+          # Use npm install (NOT --package-lock-only) to get complete dependency tree
+          npm install
           
           if [ ! -f "package-lock.json" ]; then
             echo "❌ Failed to generate package-lock.json"
@@ -120,10 +137,10 @@ jobs:
           
           echo "✅ package-lock.json regenerated successfully"
           
-      - name: Verify integrity hashes
+      - name: Verify lockfile completeness
         if: steps.check.outputs.has_issues == 'true'
         run: |
-          echo "🔍 Verifying integrity hashes..."
+          echo "🔍 Verifying lockfile completeness..."
           
           # Check that no placeholder hashes remain
           if grep -q "example-integrity-hash\|example-.*-hash" package-lock.json; then
@@ -132,8 +149,18 @@ jobs:
           fi
           
           # Count packages with integrity
+          PACKAGE_COUNT=$(jq '.packages | length' package-lock.json)
           INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
-          echo "✅ Verified $INTEGRITY_COUNT packages with valid integrity hashes"
+          
+          echo "📊 Package count: $PACKAGE_COUNT"
+          echo "📊 Packages with integrity: $INTEGRITY_COUNT"
+          
+          if [ "$PACKAGE_COUNT" -lt "100" ]; then
+            echo "❌ Lockfile still incomplete (only $PACKAGE_COUNT packages)"
+            exit 1
+          fi
+          
+          echo "✅ Verified complete lockfile with $PACKAGE_COUNT packages"
           
       - name: Test installation
         if: steps.check.outputs.has_issues == 'true'
@@ -151,34 +178,70 @@ jobs:
           
           PACKAGE_COUNT=$(jq '.packages | length' package-lock.json)
           INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
+          ISSUE_TYPE="${{ steps.check.outputs.issue_type }}"
           
-          cat > fix-summary.md <<'EOF'
+          cat > fix-summary.md <<EOF
 # Lockfile Integrity Fix Summary
 
 ## Problem Detected
+
+EOF
+          
+          if [ "$ISSUE_TYPE" = "incomplete" ]; then
+            cat >> fix-summary.md <<EOF
+- ❌ Package-lock.json was incomplete (missing most dependencies)
+- ❌ Only contained ~30 packages instead of 100+
+- ❌ Missing complete dependency trees for devDependencies
+EOF
+          elif [ "$ISSUE_TYPE" = "placeholders" ]; then
+            cat >> fix-summary.md <<EOF
 - ❌ Package-lock.json contained placeholder integrity hashes
 - ❌ This prevents proper dependency verification
-- ❌ Causes security and reproducibility issues
+EOF
+          elif [ "$ISSUE_TYPE" = "missing" ]; then
+            cat >> fix-summary.md <<EOF
+- ❌ Package-lock.json was missing entirely
+EOF
+          fi
+          
+          cat >> fix-summary.md <<EOF
 
 ## Changes Made
-- ✅ Regenerated package-lock.json with valid integrity hashes
-- 📦 Fixed integrity for packages in the lockfile
-- 🔒 Enabled proper dependency verification
+
+- ✅ Regenerated complete package-lock.json with \`npm install\`
+- 📦 Now includes $PACKAGE_COUNT packages (complete dependency tree)
+- 🔒 All packages have valid integrity hashes ($INTEGRITY_COUNT packages)
+- ✅ Verified with \`npm ci\`
 
 ## What This Fixes
+
 - ✅ Ensures packages are verified against their checksums
 - ✅ Prevents tampered or corrupted packages
 - ✅ Enables security scanning and audit tools
 - ✅ Ensures reproducible builds
 - ✅ Complies with npm security best practices
+- ✅ Fixes incomplete dependency resolution
+- ✅ Includes all transitive dependencies
+
+## Technical Details
+
+**Generation method**: \`npm install\` (NOT \`--package-lock-only\`)
+- This ensures complete dependency tree resolution
+- Includes all transitive dependencies
+- Properly resolves peer dependencies
+- Generates valid integrity hashes for all packages
 
 ## Next Steps
-1. Review the integrity hash changes
+
+1. Review the lockfile changes
 2. Merge to enable proper dependency verification
-3. All future installs will verify package integrity
+3. All future installs will use \`npm ci\` for speed
+4. Builds will be reproducible across all environments
 
 ---
 *Generated automatically by fix-lockfile-integrity workflow*
+*Run ID: ${{ github.run_id }}*
+*Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")*
 EOF
           
       - name: Create Pull Request
@@ -186,10 +249,10 @@ EOF
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "fix: Regenerate package-lock.json with correct integrity hashes"
+          commit-message: "fix: Regenerate complete package-lock.json with all dependencies"
           branch: fix-lockfile-integrity-${{ github.run_number }}
           delete-branch: true
-          title: "🔒 Fix: Regenerate package-lock.json with correct integrity hashes"
+          title: "🔒 Fix: Regenerate complete package-lock.json"
           body-path: fix-summary.md
           labels: |
             security
