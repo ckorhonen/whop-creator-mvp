@@ -66,8 +66,17 @@ jobs:
         run: |
           echo "Installing dependencies..."
           if [ -f package-lock.json ]; then
-            echo "Using package-lock.json with npm ci"
-            npm ci
+            # Check if package-lock.json is complete (has more than just root package)
+            if grep -q '"node_modules/' package-lock.json 2>/dev/null || \
+               [ $(jq '.packages | length' package-lock.json 2>/dev/null || echo 0) -gt 1 ]; then
+              echo "✅ Using complete package-lock.json with npm ci"
+              npm ci
+            else
+              echo "⚠️  Warning: package-lock.json appears incomplete (stub file)"
+              echo "Using npm install instead of npm ci"
+              echo "A complete lockfile will be generated - consider committing it"
+              npm install
+            fi
           else
             echo "⚠️  Warning: package-lock.json not found, using npm install"
             echo "Consider running 'npm install' locally and committing package-lock.json"
