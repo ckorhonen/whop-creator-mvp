@@ -2,6 +2,9 @@ name: Regenerate Complete Lockfile
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/regenerate-complete-lockfile.yml'
   pull_request:
     paths:
       - '.github/workflows/regenerate-complete-lockfile.yml'
@@ -108,7 +111,7 @@ jobs:
           echo "✅ npm ci successful!"
       
       - name: Commit and push complete lockfile
-        # Only commit when manually triggered, not on PR events (read-only context)
+        # Only commit when manually triggered, not on push/PR events
         if: github.event_name == 'workflow_dispatch'
         run: |
           git config user.name "github-actions[bot]"
@@ -151,6 +154,6 @@ a complete dependency tree with proper integrity verification."
             echo "✅ All future workflow runs will have proper dependencies"
             echo "✅ npm ci will work correctly with the complete lockfile"
           else
-            echo "ℹ️  This was a validation run (PR trigger)"
+            echo "ℹ️  This was a validation run (push/PR trigger)"
             echo "ℹ️  To commit changes, manually trigger this workflow via workflow_dispatch"
           fi
