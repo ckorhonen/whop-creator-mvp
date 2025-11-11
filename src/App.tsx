@@ -1,28 +1,19 @@
-import { useState } from 'react'
-import './App.css'
+import React from 'react'
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <div className="app">
-      <header>
-        <h1>🚀 Creator Economy MVP</h1>
-        <p>Built with React + TypeScript for Whop</p>
-      </header>
-      
-      <main>
-        <div className="card">
-          <button onClick={() => setCount((count) => count + 1)}>
-            Count: {count}
-          </button>
-          <p>Ready to build your creator platform</p>
-        </div>
-      </main>
-
-      <footer>
-        <p>Deployed on Cloudflare Workers</p>
-      </footer>
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#282c34',
+      color: 'white',
+      fontSize: 'calc(10px + 2vmin)'
+    }}>
+      <h1>Whop Creator MVP</h1>
+      <p>Welcome to your Whop creator application!</p>
     </div>
   )
 }
