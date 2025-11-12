@@ -1,0 +1,296 @@
+name: Apply Lockfile Integrity Fix
+
+on:
+  workflow_dispatch:
+    inputs:
+      create_pr:
+        description: 'Create PR with fixed lockfile'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  fix-lockfile:
+    runs-on: ubuntu-latest
+    name: Fix package-lock.json integrity hashes
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          # Do NOT use cache here - the lockfile is broken!
+      
+      - name: Analyze current lockfile
+        id: analyze
+        run: |
+          echo "=== Current Lockfile Analysis ==="
+          if [ -f package-lock.json ]; then
+            CURRENT_SIZE=$(du -h package-lock.json | cut -f1)
+            CURRENT_LINES=$(wc -l < package-lock.json)
+            echo "Current size: $CURRENT_SIZE"
+            echo "Current lines: $CURRENT_LINES"
+            
+            PLACEHOLDER_COUNT=$(grep -c "example-.*-hash" package-lock.json || echo "0")
+            echo "Placeholder hashes found: $PLACEHOLDER_COUNT"
+            echo "placeholder_count=$PLACEHOLDER_COUNT" >> $GITHUB_OUTPUT
+            
+            if [ "$PLACEHOLDER_COUNT" -gt 0 ]; then
+              echo "❌ PROBLEM: Lockfile contains $PLACEHOLDER_COUNT placeholder hashes"
+              echo ""
+              echo "Sample placeholder entries:"
+              grep -B 2 "example-.*-hash" package-lock.json | head -20
+            else
+              echo "✅ No placeholder hashes found - lockfile appears valid"
+            fi
+          else
+            echo "⚠️  No lockfile found"
+            echo "placeholder_count=0" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Clean and regenerate lockfile
+        if: steps.analyze.outputs.placeholder_count != '0'
+        run: |
+          echo "=== Cleaning and Regenerating Lockfile ==="
+          
+          # Backup current lockfile
+          if [ -f package-lock.json ]; then
+            cp package-lock.json package-lock.json.backup
+            echo "✅ Backed up current lockfile"
+          fi
+          
+          # Clean everything
+          rm -rf node_modules
+          rm -f package-lock.json
+          npm cache clean --force
+          echo "✅ Cleaned npm cache and old files"
+          
+          # Generate new lockfile with real integrity hashes
+          echo "📦 Generating new lockfile..."
+          npm install
+          echo "✅ New lockfile generated"
+      
+      - name: Verify the fix
+        if: steps.analyze.outputs.placeholder_count != '0'
+        run: |
+          echo "=== Verifying Fix ==="
+          
+          if [ ! -f package-lock.json ]; then
+            echo "❌ ERROR: package-lock.json was not generated!"
+            exit 1
+          fi
+          
+          # Check file size
+          FILE_SIZE=$(du -k package-lock.json | cut -f1)
+          NEW_SIZE=$(du -h package-lock.json | cut -f1)
+          NEW_LINES=$(wc -l < package-lock.json)
+          echo "New size: $NEW_SIZE"
+          echo "New lines: $NEW_LINES"
+          
+          if [ "$FILE_SIZE" -lt 10 ]; then
+            echo "❌ ERROR: Lockfile is too small (< 10KB)"
+            exit 1
+          fi
+          
+          # Check for remaining placeholder hashes
+          PLACEHOLDER_COUNT=$(grep -c "example-.*-hash" package-lock.json || echo "0")
+          echo "Placeholder hashes remaining: $PLACEHOLDER_COUNT"
+          
+          if [ "$PLACEHOLDER_COUNT" -gt 0 ]; then
+            echo "❌ ERROR: Still found $PLACEHOLDER_COUNT placeholder hashes!"
+            echo "Problematic entries:"
+            grep -n "example-.*-hash" package-lock.json | head -10
+            exit 1
+          fi
+          
+          # Count real integrity hashes
+          REAL_INTEGRITY_COUNT=$(grep -c '"integrity": "sha' package-lock.json || echo "0")
+          echo "Real SHA integrity hashes: $REAL_INTEGRITY_COUNT"
+          
+          if [ "$REAL_INTEGRITY_COUNT" -lt 50 ]; then
+            echo "⚠️  WARNING: Expected more integrity hashes (found $REAL_INTEGRITY_COUNT)"
+          else
+            echo "✅ Found $REAL_INTEGRITY_COUNT real integrity hashes"
+          fi
+          
+          # Show sample of real hashes
+          echo ""
+          echo "Sample real integrity hashes:"
+          grep '"integrity": "sha' package-lock.json | head -5
+      
+      - name: Test lockfile with npm ci
+        if: steps.analyze.outputs.placeholder_count != '0'
+        run: |
+          echo "=== Testing Lockfile ==="
+          rm -rf node_modules
+          npm ci
+          echo "✅ npm ci succeeded"
+      
+      - name: Test build
+        if: steps.analyze.outputs.placeholder_count != '0'
+        run: |
+          echo "=== Testing Build ==="
+          npm run build
+          echo "✅ Build succeeded"
+      
+      - name: Clean node_modules before commit
+        if: steps.analyze.outputs.placeholder_count != '0'
+        run: |
+          rm -rf node_modules
+          echo "✅ Cleaned node_modules"
+      
+      - name: Create Pull Request
+        if: steps.analyze.outputs.placeholder_count != '0' && github.event.inputs.create_pr == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            🔧 Fix: Regenerate package-lock.json with real integrity hashes
+            
+            This replaces the invalid lockfile containing placeholder integrity
+            hashes with a complete, valid lockfile generated by npm install.
+            
+            Changes:
+            - Removed all placeholder hashes (example-*-hash)
+            - Generated real SHA-512 integrity hashes for all packages
+            - Complete dependency tree with proper resolution
+            - Verified lockfile format and integrity
+            - Tested with npm ci and build
+            
+            Fixes workflow failures caused by invalid lockfile.
+            
+            Benefits:
+            ✅ Package integrity can be verified
+            ✅ npm caching works in CI/CD
+            ✅ Reliable, reproducible builds
+            ✅ Security vulnerability detection enabled
+            ✅ Fast deployments with npm ci
+          branch: automated-lockfile-fix-${{ github.run_id }}
+          delete-branch: true
+          title: '🔧 Fix: Regenerate package-lock.json with real integrity hashes'
+          body: |
+            ## Automated Lockfile Fix
+            
+            This PR was automatically generated to fix the lockfile integrity issue.
+            
+            ### Problem
+            The `package-lock.json` contained placeholder integrity hashes instead of real SHA-512 hashes.
+            
+            ### Solution Applied
+            - ✅ Cleaned npm cache and removed old files
+            - ✅ Regenerated complete lockfile with real integrity hashes
+            - ✅ Verified no placeholder hashes remain
+            - ✅ Tested with `npm ci` - successful
+            - ✅ Tested build process - successful
+            
+            ### Changes
+            - All placeholder hashes replaced with real SHA-512 cryptographic hashes
+            - Complete dependency tree with proper package resolution
+            - Lockfile now works with `npm ci` for fast, reliable builds
+            
+            ### Verification
+            ```bash
+            # No placeholder hashes
+            grep "example-.*-hash" package-lock.json
+            # Returns: (empty)
+            
+            # Real integrity hashes present
+            grep -c '"integrity": "sha' package-lock.json
+            # Returns: 100+
+            ```
+            
+            ### Next Steps
+            1. Review the changes
+            2. Merge this PR
+            3. Verify workflows pass
+            4. Deployments should now work correctly
+            
+            ---
+            
+            Generated by workflow run: [${{ github.run_id }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          labels: |
+            automated
+            dependencies
+            fix
+      
+      - name: Commit directly (no PR)
+        if: steps.analyze.outputs.placeholder_count != '0' && github.event.inputs.create_pr != 'true'
+        run: |
+          echo "=== Committing Changes Directly ==="
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          git add package-lock.json
+          
+          if git diff --staged --quiet; then
+            echo "ℹ️  No changes to commit"
+            exit 0
+          fi
+          
+          git commit -m "🔧 Fix: Regenerate package-lock.json with real integrity hashes
+
+This replaces the invalid lockfile containing placeholder integrity hashes
+with a complete, valid lockfile generated by npm install.
+
+Changes:
+- Removed all placeholder hashes (example-*-hash)
+- Generated real SHA-512 integrity hashes for all packages
+- Complete dependency tree with proper resolution
+- Verified lockfile format and integrity
+- Tested with npm ci and build
+
+Benefits:
+✅ Package integrity can be verified
+✅ npm caching works in CI/CD
+✅ Reliable, reproducible builds
+✅ Security vulnerability detection enabled
+✅ Fast deployments with npm ci"
+          
+          git push
+          echo "✅ Changes pushed directly to branch"
+      
+      - name: Summary
+        if: steps.analyze.outputs.placeholder_count != '0'
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "✅ LOCKFILE FIX COMPLETED SUCCESSFULLY"
+          echo "=========================================="
+          echo ""
+          echo "The package-lock.json has been regenerated with:"
+          echo "  ✓ Real SHA-512 integrity hashes (not placeholders)"
+          echo "  ✓ Complete dependency tree"
+          echo "  ✓ Proper npm lockfile format"
+          echo "  ✓ Verified with npm ci"
+          echo "  ✓ Build tested successfully"
+          echo ""
+          if [ "${{ github.event.inputs.create_pr }}" == "true" ]; then
+            echo "A pull request has been created with the changes."
+          else
+            echo "Changes have been committed directly to the branch."
+          fi
+          echo ""
+      
+      - name: Already Fixed
+        if: steps.analyze.outputs.placeholder_count == '0'
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "ℹ️  LOCKFILE ALREADY VALID"
+          echo "=========================================="
+          echo ""
+          echo "No placeholder hashes found in package-lock.json"
+          echo "The lockfile is already in good shape!"
+          echo ""
