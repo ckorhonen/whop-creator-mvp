@@ -6,6 +6,7 @@ on:
       reason:
         description: 'Reason for lockfile fix (optional)'
         required: false
+        type: string
         default: 'Auto-fix package-lock.json integrity issues'
   push:
     paths:
@@ -227,45 +228,49 @@ jobs:
           INTEGRITY_COUNT=$(jq '[.packages | to_entries[] | select(.value.integrity)] | length' package-lock.json)
           REASON="${{ github.event.inputs.reason }}"
           
-          # Create summary using echo to avoid heredoc issues
-          {
-            echo "# 🔒 Lockfile Integrity Fix Summary"
-            echo ""
-            echo "## Problem Detected"
-            echo "- ❌ Package-lock.json was missing, incomplete, or had invalid integrity hashes"
-            echo "- ❌ This prevents proper dependency verification and reproducible builds"
-            echo "- ❌ Causes security vulnerabilities and build inconsistencies"
-            echo ""
-            echo "## Changes Made"
-            echo "- ✅ Regenerated complete package-lock.json with valid integrity hashes"
-            echo "- 📦 Fixed integrity for $INTEGRITY_COUNT out of $TOTAL_PACKAGES packages"
-            echo "- 🔒 Enabled proper dependency verification and security scanning"
-            echo ""
-            echo "## Benefits"
-            echo "- ✅ **Security**: Packages are now verified against their checksums"
-            echo "- ✅ **Reproducibility**: Identical dependency trees across all environments"
-            echo "- ✅ **Performance**: Faster installs with npm ci instead of npm install"
-            echo "- ✅ **Reliability**: Prevents installation of tampered or corrupted packages"
-            echo "- ✅ **Compliance**: Follows npm security best practices"
-            echo ""
-            echo "## Technical Details"
-            echo "- **Lockfile version**: 3 (npm 7+)"
-            echo "- **Node.js version**: 20.x"
-            echo "- **Total packages locked**: $TOTAL_PACKAGES"
-            echo "- **Packages with integrity**: $INTEGRITY_COUNT"
-            echo ""
-            echo "## Reason"
-            echo "${REASON:-Auto-generated fix}"
-            echo ""
-            echo "## Next Steps"
-            echo "1. ✅ Review the integrity hash changes"
-            echo "2. ✅ Merge this PR to enable proper dependency verification"
-            echo "3. ✅ All future installs will verify package integrity"
-            echo "4. ✅ Update CI/CD to use \`npm ci\` for faster, reproducible builds"
-            echo ""
-            echo "---"
-            echo "*Generated automatically by auto-fix-lockfile workflow*"
-          } > fix-summary.md
+          cat > fix-summary.md << 'EOFMARKER'
+          # 🔒 Lockfile Integrity Fix Summary
+
+          ## Problem Detected
+          - ❌ Package-lock.json was missing, incomplete, or had invalid integrity hashes
+          - ❌ This prevents proper dependency verification and reproducible builds
+          - ❌ Causes security vulnerabilities and build inconsistencies
+
+          ## Changes Made
+          - ✅ Regenerated complete package-lock.json with valid integrity hashes
+          - 📦 Fixed integrity for packages
+          - 🔒 Enabled proper dependency verification and security scanning
+
+          ## Benefits
+          - ✅ **Security**: Packages are now verified against their checksums
+          - ✅ **Reproducibility**: Identical dependency trees across all environments
+          - ✅ **Performance**: Faster installs with npm ci instead of npm install
+          - ✅ **Reliability**: Prevents installation of tampered or corrupted packages
+          - ✅ **Compliance**: Follows npm security best practices
+
+          ## Technical Details
+          - **Lockfile version**: 3 (npm 7+)
+          - **Node.js version**: 20.x
+          - **Total packages locked**: TOTAL_PACKAGES_PLACEHOLDER
+          - **Packages with integrity**: INTEGRITY_COUNT_PLACEHOLDER
+
+          ## Reason
+          REASON_PLACEHOLDER
+
+          ## Next Steps
+          1. ✅ Review the integrity hash changes
+          2. ✅ Merge this PR to enable proper dependency verification
+          3. ✅ All future installs will verify package integrity
+          4. ✅ Update CI/CD to use `npm ci` for faster, reproducible builds
+
+          ---
+          *Generated automatically by auto-fix-lockfile workflow*
+          EOFMARKER
+          
+          # Replace placeholders
+          sed -i "s/TOTAL_PACKAGES_PLACEHOLDER/$TOTAL_PACKAGES/g" fix-summary.md
+          sed -i "s/INTEGRITY_COUNT_PLACEHOLDER/$INTEGRITY_COUNT/g" fix-summary.md
+          sed -i "s/REASON_PLACEHOLDER/${REASON:-Auto-generated fix}/g" fix-summary.md
           
           echo "✅ Summary generated"
           cat fix-summary.md
@@ -275,16 +280,7 @@ jobs:
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: |
-            🔒 Fix: Auto-regenerate complete package-lock.json with integrity
-            
-            - Regenerated lockfile with valid SHA-512 integrity hashes
-            - Enables proper package verification and security scanning
-            - Prevents installation of tampered dependencies
-            - Ensures reproducible and secure builds
-            
-            Triggered by: ${{ github.event_name }}
-            Reason: ${{ github.event.inputs.reason }}
+          commit-message: "🔒 Fix: Auto-regenerate complete package-lock.json with integrity hashes"
           branch: auto-fix-lockfile-${{ github.run_number }}
           delete-branch: true
           title: "🔒 Auto-fix: Regenerate complete package-lock.json with integrity"
