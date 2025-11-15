@@ -1,0 +1,72 @@
+name: Manual Lockfile Fix
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix-lockfile:
+    name: Regenerate lockfile with real integrity hashes
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: fix/lockfile-integrity-real-hashes-v2
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Remove corrupted lockfile
+        run: |
+          echo "🗑️  Removing corrupted package-lock.json..."
+          rm -f package-lock.json
+          rm -rf node_modules
+          
+      - name: Clean npm cache
+        run: |
+          echo "🧹 Cleaning npm cache..."
+          npm cache clean --force
+          
+      - name: Generate new lockfile
+        run: |
+          echo "🔨 Generating fresh package-lock.json with real integrity hashes..."
+          npm install --package-lock-only
+          
+      - name: Verify lockfile
+        run: |
+          echo "✅ Verifying package-lock.json..."
+          if [ ! -f "package-lock.json" ]; then
+            echo "❌ Failed to generate package-lock.json"
+            exit 1
+          fi
+          
+          # Check for placeholder hashes
+          if grep -q "example-.*-hash" package-lock.json; then
+            echo "❌ Still has placeholder hashes!"
+            exit 1
+          fi
+          
+          echo "✅ Lockfile generated successfully with real integrity hashes"
+          
+      - name: Test installation
+        run: |
+          echo "🧪 Testing npm ci..."
+          rm -rf node_modules
+          npm ci
+          echo "✅ npm ci works!"
+          
+      - name: Commit changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "fix: Regenerate package-lock.json with real integrity hashes
+
+- Removed placeholder integrity hashes (example-*-hash)
+- Generated fresh lockfile with valid SHA-512 hashes from npm registry
+- Verified with npm ci
+- Enables proper dependency verification and security scanning"
+          git push
