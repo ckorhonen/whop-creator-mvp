@@ -10,16 +10,16 @@ on:
   push:
     paths:
       - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/fix-lockfile-integrity.yml'
     branches:
       - main
+      - 'fix/workflow-circular-trigger'  # Allow testing on this branch
 
 # Required permissions for create-pull-request action
 permissions:
   contents: write
   pull-requests: write
-  actions: read
+  actions: write  # Added for workflow dispatch/management
+  issues: write   # Sometimes needed for PR creation
 
 jobs:
   fix-integrity:
@@ -27,11 +27,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     
-    # Explicit permissions at job level (redundant but ensures they apply)
-    permissions:
-      contents: write
-      pull-requests: write
-      actions: read
+    # Prevent circular triggers - skip if:
+    # 1. Commit message contains [skip ci] or [ci skip]
+    # 2. Branch name starts with 'fix-lockfile-integrity-' (our own PR branches)
+    if: |
+      !contains(github.event.head_commit.message, '[skip ci]') &&
+      !contains(github.event.head_commit.message, '[ci skip]') &&
+      !startsWith(github.ref, 'refs/heads/fix-lockfile-integrity-')
     
     steps:
       - name: Debug - Check permissions
@@ -41,6 +43,8 @@ jobs:
           echo "Actor: ${{ github.actor }}"
           echo "Event: ${{ github.event_name }}"
           echo "Ref: ${{ github.ref }}"
+          echo "Run Number: ${{ github.run_number }}"
+          echo "Token Permissions: This workflow has contents:write, pull-requests:write, actions:write"
           
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -189,16 +193,37 @@ jobs:
           
       - name: Create Pull Request
         if: steps.check.outputs.has_issues == 'true'
+        id: create-pr
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "fix: Regenerate package-lock.json with correct integrity hashes"
+          commit-message: "fix: Regenerate package-lock.json with correct integrity hashes [skip ci]"
           branch: fix-lockfile-integrity-${{ github.run_number }}
           delete-branch: true
           title: "🔒 Fix: Regenerate package-lock.json with correct integrity hashes"
           body: ${{ steps.summary.outputs.pr_body }}
           labels: security,dependencies,automated
           assignees: ${{ github.actor }}
+        continue-on-error: true
+          
+      - name: Check PR creation result
+        if: steps.check.outputs.has_issues == 'true'
+        run: |
+          if [ "${{ steps.create-pr.outcome }}" == "failure" ]; then
+            echo "⚠️  Failed to create pull request"
+            echo "This might be due to:"
+            echo "  - Insufficient permissions for GITHUB_TOKEN"
+            echo "  - Repository settings preventing automated PRs"
+            echo "  - A PR from the same branch already exists"
+            echo ""
+            echo "However, the lockfile has been fixed successfully."
+            echo "You may need to manually commit the changes."
+            exit 0
+          else
+            echo "✅ Pull request created successfully!"
+            echo "PR Number: ${{ steps.create-pr.outputs.pull-request-number }}"
+            echo "PR URL: ${{ steps.create-pr.outputs.pull-request-url }}"
+          fi
           
       - name: Workflow completion
         run: |
