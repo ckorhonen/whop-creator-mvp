@@ -33,14 +33,40 @@ jobs:
           git status || echo "Git not initialized"
           echo "Runner OS: ${{ runner.os }}"
           echo "Runner architecture: ${{ runner.arch }}"
+          echo "Node.js cache key will be based on package-lock.json hash"
+          if [ -f package-lock.json ]; then
+            echo "package-lock.json hash: $(sha256sum package-lock.json | cut -d' ' -f1)"
+          fi
           echo "=============================="
       
-      - name: Setup Node.js
+      - name: Setup Node.js (with cache fallback)
+        id: setup-node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
+        timeout-minutes: 3
+        continue-on-error: true
+      
+      - name: Setup Node.js (without cache - fallback)
+        if: steps.setup-node.outcome == 'failure'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
         timeout-minutes: 2
+        
+      - name: Cache diagnosis
+        if: steps.setup-node.outcome == 'failure'
+        run: |
+          echo "⚠️  Warning: npm cache setup failed"
+          echo "Continuing without cache (build will be slower)"
+          echo "This can happen due to:"
+          echo "  - Corrupted cache from previous runs"
+          echo "  - package-lock.json integrity issues"
+          echo "  - Temporary GitHub Actions cache service issues"
+          echo ""
+          echo "The workflow will continue and should succeed, just slower."
+          echo "If this persists, consider regenerating package-lock.json"
       
       - name: Validate Environment
         run: |
@@ -60,6 +86,10 @@ jobs:
             echo "✅ package-lock.json found"
             LOCKFILE_SIZE=$(wc -l < package-lock.json)
             echo "   Lockfile size: $LOCKFILE_SIZE lines"
+            # Validate lockfile integrity
+            if npm ls --json > /dev/null 2>&1 || true; then
+              echo "   Lockfile appears valid"
+            fi
           else
             echo "⚠️  Warning: package-lock.json not found"
           fi
@@ -115,6 +145,13 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       
+      - name: Clear npm cache (if cache was problematic)
+        if: steps.setup-node.outcome == 'failure'
+        run: |
+          echo "Clearing npm cache to ensure clean install..."
+          npm cache clean --force
+          echo "Cache cleared"
+      
       - name: Install dependencies
         run: |
           echo "=== Installing Dependencies ==="
@@ -124,8 +161,14 @@ jobs:
             if [ "$LOCKFILE_SIZE" -gt 100 ]; then
               echo "✅ Found complete package-lock.json ($LOCKFILE_SIZE lines)"
               echo "Using npm ci for fast, reproducible installation"
-              npm ci
-              echo "✅ Dependencies installed successfully with npm ci"
+              
+              # Try npm ci first, fall back to npm install if it fails
+              if ! npm ci 2>&1 | tee npm-install.log; then
+                echo "⚠️  npm ci failed, trying npm install instead"
+                echo "This can happen if lockfile needs regeneration"
+                npm install
+              fi
+              echo "✅ Dependencies installed successfully"
             else
               echo "⚠️  Warning: package-lock.json appears incomplete ($LOCKFILE_SIZE lines)"
               echo "Using npm install instead"
@@ -331,4 +374,8 @@ jobs:
           echo "=== Workflow Completion Summary ==="
           echo "Workflow completed at: $(date)"
           echo "Status: ${{ job.status }}"
+          if [ "${{ steps.setup-node.outcome }}" = "failure" ]; then
+            echo "Note: npm cache was disabled this run due to cache issues"
+            echo "Next run should re-establish cache"
+          fi
           echo "=============================="

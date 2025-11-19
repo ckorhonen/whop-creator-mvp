@@ -12,8 +12,10 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/fix-lockfile-integrity.yml'
-    branches:
-      - main
+    # Removed branch restriction to allow workflow to run on any branch
+    # This is useful for testing and development
+    # branches:
+    #   - main
 
 # Required permissions for create-pull-request action
 permissions:
